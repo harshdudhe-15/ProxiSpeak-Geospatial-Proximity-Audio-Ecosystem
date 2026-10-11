@@ -1,0 +1,14 @@
+{
+  "name": "proxispeak-monorepo",
+  "version": "1.0.0",
+  "description": "ProxiSpeak - Real-Time Geospatial Proximity Audio Virtual Office",
+  "private": true,
+  "scripts": {
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build:client": "npm --prefix client run build",
+    "test:server": "npm --prefix server run test",
+    "test:client": "npm --prefix client run test",
+    "test": "npm run test:server && npm run test:client"
+  }
+}
