@@ -13,7 +13,7 @@ export class SocketService {
     this.eventListeners = new Map();
   }
 
-  connect(url = window.location.origin) {
+  connect(url = import.meta.env.VITE_API_URL || window.location.origin) {
     if (this.socket && this.connected) {
       return this.socket;
     }

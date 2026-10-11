@@ -3,9 +3,15 @@
  */
 
 const getApiBase = () => {
-  if (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null') {
-    return `${window.location.origin}/api`;
+  // if (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null') {
+  //   return `${window.location.origin}/api`;
+  // }
+  const baseUrl = import.meta.env.VITE_API_URL;
+
+  if (baseUrl) {
+    return `${baseUrl.replace(/\/+$/, '')}/api`;
   }
+
   return 'http://localhost:5000/api';
 };
 
