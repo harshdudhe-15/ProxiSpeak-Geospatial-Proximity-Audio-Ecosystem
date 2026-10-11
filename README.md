@@ -400,3 +400,4 @@ To test spatial proximity audio with two users:
 ## 14. License
 
 MIT License. Built for modern high-performance spatial collaboration.
+
