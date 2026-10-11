@@ -90,24 +90,37 @@ export function App() {
     };
   }, []);
 
+  // Auto-resume AudioContext on user interaction gestures
+  useEffect(() => {
+    const handleGesture = () => {
+      spatialAudioMixer.ensureAudioContext();
+    };
+    window.addEventListener('pointerdown', handleGesture);
+    window.addEventListener('keydown', handleGesture);
+    return () => {
+      window.removeEventListener('pointerdown', handleGesture);
+      window.removeEventListener('keydown', handleGesture);
+    };
+  }, []);
+
   // Join Office Action
   const handleJoinOffice = async ({ displayName, avatarColor, officeId }) => {
     setIsJoining(true);
     setStatusToast(null);
 
     try {
-      // 1. Obtain server-controlled unique guest session identity
+      // 1. Immediately initialize and resume AudioContext inside the user interaction gesture stack
+      await spatialAudioMixer.ensureAudioContext();
+
+      // 2. Obtain server-controlled unique guest session identity
       const session = await createSession({
         displayName,
         avatarColor,
         avatarIcon: 'user'
       });
 
-      // 2. Request microphone access (gracefully continues even if denied)
+      // 3. Request microphone access (gracefully continues even if denied)
       await webRtcService.initLocalMicrophone();
-
-      // 3. Ensure AudioContext is ready upon user interaction gesture
-      await spatialAudioMixer.ensureAudioContext();
 
       // 4. Connect to Socket.IO signaling server
       socketService.connect();

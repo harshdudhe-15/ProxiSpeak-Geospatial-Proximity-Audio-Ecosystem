@@ -66,6 +66,27 @@ export class SpatialAudioMixer {
     this.removePeer(peerId);
 
     try {
+      // Workaround for Chromium bug: Remote WebRTC MediaStreams remain silent in Web Audio API
+      // unless anchored to an active playing HTMLAudioElement.
+      let audioEl = null;
+      if (typeof document !== 'undefined') {
+        try {
+          audioEl = document.createElement('audio');
+          audioEl.srcObject = stream;
+          audioEl.muted = true; // Muted so raw un-spatialized audio does not bypass Web Audio graph
+          audioEl.playsInline = true;
+          audioEl.autoplay = true;
+          const playPromise = audioEl.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(err => {
+              console.warn(`[SpatialAudio] HTMLAudioElement anchor play warning for ${peerId}:`, err.message);
+            });
+          }
+        } catch (e) {
+          console.warn(`[SpatialAudio] Could not create audio element anchor:`, e.message);
+        }
+      }
+
       const sourceNode = this.audioCtx.createMediaStreamSource(stream);
       const gainNode = this.audioCtx.createGain();
       gainNode.gain.value = 0; // Starts silent until position is evaluated
@@ -94,16 +115,19 @@ export class SpatialAudioMixer {
 
       this.peerNodes.set(peerId, {
         stream,
+        audioEl,
         sourceNode,
         gainNode,
         pannerNode,
         analyserNode,
         isObstructed: false,
         micMuted: false,
-        lastComputedGain: 0
+        lastComputedGain: 0,
+        lastTargetGain: null,
+        lastTargetPan: null
       });
 
-      // console.log(`[SpatialAudio] Spatial pipeline initialized for peer: ${peerId}`);
+      console.log(`[SpatialAudio] Spatial pipeline initialized for peer: ${peerId}`);
     } catch (err) {
       console.error(`[SpatialAudio] Error setting up audio pipeline for peer ${peerId}:`, err);
     }
@@ -139,11 +163,17 @@ export class SpatialAudioMixer {
     const timeConstant = 0.05; // 50ms exponential smoothing
 
     if (nodeGroup.gainNode) {
-      nodeGroup.gainNode.gain.setTargetAtTime(targetGain, now, timeConstant);
+      if (nodeGroup.lastTargetGain == null || Math.abs(nodeGroup.lastTargetGain - targetGain) > 0.001) {
+        nodeGroup.lastTargetGain = targetGain;
+        nodeGroup.gainNode.gain.setTargetAtTime(targetGain, now, timeConstant);
+      }
     }
 
     if (nodeGroup.pannerNode) {
-      nodeGroup.pannerNode.pan.setTargetAtTime(targetPan, now, timeConstant);
+      if (nodeGroup.lastTargetPan == null || Math.abs(nodeGroup.lastTargetPan - targetPan) > 0.005) {
+        nodeGroup.lastTargetPan = targetPan;
+        nodeGroup.pannerNode.pan.setTargetAtTime(targetPan, now, timeConstant);
+      }
     }
   }
 
@@ -156,6 +186,7 @@ export class SpatialAudioMixer {
       nodeGroup.micMuted = Boolean(isMuted);
       if (this.audioCtx && nodeGroup.gainNode) {
         const targetGain = nodeGroup.micMuted ? 0 : (nodeGroup.lastComputedGain || 0);
+        nodeGroup.lastTargetGain = targetGain;
         nodeGroup.gainNode.gain.setTargetAtTime(targetGain, this.audioCtx.currentTime, 0.05);
       }
     }
@@ -187,6 +218,10 @@ export class SpatialAudioMixer {
     if (!nodeGroup) return;
 
     try {
+      if (nodeGroup.audioEl) {
+        nodeGroup.audioEl.pause();
+        nodeGroup.audioEl.srcObject = null;
+      }
       if (nodeGroup.gainNode) nodeGroup.gainNode.disconnect();
       if (nodeGroup.pannerNode) nodeGroup.pannerNode.disconnect();
       if (nodeGroup.analyserNode) nodeGroup.analyserNode.disconnect();

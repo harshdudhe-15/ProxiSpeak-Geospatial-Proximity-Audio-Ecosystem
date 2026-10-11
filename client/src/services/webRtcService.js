@@ -152,17 +152,22 @@ export class WebRtcService {
       return this.peers.get(peerId);
     }
 
+    console.log(`[WebRTC] Creating RTCPeerConnection for peer: ${peerId}`);
     const pc = new RTCPeerConnection({
       iceServers: this.iceServers
     });
 
     this.peers.set(peerId, pc);
-    this.iceQueues.set(peerId, []);
+    // Preserve any early queued ICE candidates that arrived before getOrCreatePeer was called
+    if (!this.iceQueues.has(peerId)) {
+      this.iceQueues.set(peerId, []);
+    }
     this.connectionStates.set(peerId, 'new');
 
     // Add local audio tracks to peer connection
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach(track => {
+        console.log(`[WebRTC] Adding local audio track (${track.id}) to peer ${peerId}`);
         pc.addTrack(track, this.localStream);
       });
     }
@@ -170,6 +175,7 @@ export class WebRtcService {
     // ICE Candidate handler
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
+        // console.log(`[WebRTC] Sending ICE candidate to peer ${peerId}:`, event.candidate.candidate);
         socket.emit('rtc:ice-candidate', {
           targetPeerId: peerId,
           candidate: event.candidate
@@ -177,17 +183,21 @@ export class WebRtcService {
       }
     };
 
-    // Remote audio track received
+    // Remote audio track received (handles both event.streams and fallback event.track)
     pc.ontrack = (event) => {
-      // console.log(`[WebRTC] Received remote audio track from peer: ${peerId}`);
-      if (event.streams && event.streams[0]) {
-        spatialAudioMixer.addPeerStream(peerId, event.streams[0]);
-      }
+      console.log(`[WebRTC] Received remote audio track from peer: ${peerId}`, event.track);
+      const stream = (event.streams && event.streams[0]) || new MediaStream([event.track]);
+      spatialAudioMixer.addPeerStream(peerId, stream);
+    };
+
+    // ICE Connection state changes
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC] Peer ${peerId} ICE connection state: ${pc.iceConnectionState}`);
     };
 
     // Connection state changes
     pc.onconnectionstatechange = () => {
-      // console.log(`[WebRTC] Peer ${peerId} state: ${pc.connectionState}`);
+      console.log(`[WebRTC] Peer ${peerId} connection state: ${pc.connectionState}`);
       this.connectionStates.set(peerId, pc.connectionState);
       this.notifyStateChange();
 
@@ -204,6 +214,7 @@ export class WebRtcService {
    */
   async initiateOffer(peerId, socket) {
     try {
+      console.log(`[WebRTC] Initiating SDP offer to peer: ${peerId}`);
       const pc = this.getOrCreatePeer(peerId, socket);
 
       // Create and set local description
@@ -216,7 +227,7 @@ export class WebRtcService {
         targetPeerId: peerId,
         sdp: pc.localDescription
       });
-      // console.log(`[WebRTC] Dispatched offer to peer: ${peerId}`);
+      console.log(`[WebRTC] Dispatched SDP offer to peer: ${peerId}`);
     } catch (err) {
       console.error(`[WebRTC] Error initiating offer to ${peerId}:`, err);
     }
@@ -227,19 +238,22 @@ export class WebRtcService {
    */
   async handleOffer(senderPeerId, sdp, socket) {
     try {
+      console.log(`[WebRTC] Handling incoming SDP offer from peer: ${senderPeerId}`);
       const pc = this.getOrCreatePeer(senderPeerId, socket);
 
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       await this.flushIceQueue(senderPeerId, pc);
 
-      const answer = await pc.createAnswer();
+      const answer = await pc.createAnswer({
+        offerToReceiveAudio: true
+      });
       await pc.setLocalDescription(answer);
 
       socket.emit('rtc:answer', {
         targetPeerId: senderPeerId,
         sdp: pc.localDescription
       });
-      // console.log(`[WebRTC] Dispatched answer to peer: ${senderPeerId}`);
+      console.log(`[WebRTC] Dispatched SDP answer to peer: ${senderPeerId}`);
     } catch (err) {
       console.error(`[WebRTC] Error handling offer from ${senderPeerId}:`, err);
     }
@@ -250,12 +264,13 @@ export class WebRtcService {
    */
   async handleAnswer(senderPeerId, sdp) {
     try {
+      console.log(`[WebRTC] Handling incoming SDP answer from peer: ${senderPeerId}`);
       const pc = this.peers.get(senderPeerId);
       if (!pc) return;
 
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       await this.flushIceQueue(senderPeerId, pc);
-      // console.log(`[WebRTC] Set remote description answer for peer: ${senderPeerId}`);
+      console.log(`[WebRTC] Established remote description answer for peer: ${senderPeerId}`);
     } catch (err) {
       console.error(`[WebRTC] Error handling answer from ${senderPeerId}:`, err);
     }
@@ -265,17 +280,20 @@ export class WebRtcService {
    * Handles incoming ICE candidate. Queues candidate if remote description is not ready yet.
    */
   async handleIceCandidate(senderPeerId, candidate) {
+    if (!candidate) return;
     try {
       const pc = this.peers.get(senderPeerId);
-      if (!pc || !pc.remoteDescription) {
+      if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) {
         // Queue candidate until setRemoteDescription completes
         const queue = this.iceQueues.get(senderPeerId) || [];
         queue.push(candidate);
         this.iceQueues.set(senderPeerId, queue);
+        // console.log(`[WebRTC] Queued ICE candidate for ${senderPeerId} (total: ${queue.length})`);
         return;
       }
 
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      const iceCandidate = typeof RTCIceCandidate !== 'undefined' ? new RTCIceCandidate(candidate) : candidate;
+      await pc.addIceCandidate(iceCandidate);
     } catch (err) {
       console.error(`[WebRTC] Error adding ICE candidate from ${senderPeerId}:`, err);
     }
@@ -288,10 +306,14 @@ export class WebRtcService {
     const queue = this.iceQueues.get(peerId);
     if (!queue || !queue.length) return;
 
-    while (queue.length > 0) {
-      const candidate = queue.shift();
+    console.log(`[WebRTC] Flushing ${queue.length} queued ICE candidate(s) for ${peerId}`);
+    const candidates = queue.splice(0, queue.length);
+    for (const candidate of candidates) {
       try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        if (candidate) {
+          const iceCandidate = typeof RTCIceCandidate !== 'undefined' ? new RTCIceCandidate(candidate) : candidate;
+          await pc.addIceCandidate(iceCandidate);
+        }
       } catch (err) {
         console.warn(`[WebRTC] Error flushing candidate for ${peerId}:`, err);
       }
