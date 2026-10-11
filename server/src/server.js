@@ -10,11 +10,12 @@ dotenv.config();
 const PORT = process.env.PORT || 5000;
 const app = createApp();
 const httpServer = http.createServer(app);
+const allowedOrigin = process.env.CLIENT_ORIGIN || '*';
 
 // Initialize Socket.IO with CORS
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: '*',
+    origin: allowedOrigin,
     methods: ['GET', 'POST']
   },
   pingTimeout: 20000,
@@ -28,7 +29,7 @@ async function startServer() {
   try {
     await connectDB();
 
-    httpServer.listen(PORT, () => {
+    httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`===============================================`);
       console.log(`🎙️  ProxiSpeak Real-Time Server Running!`);
       console.log(`📡 Port: ${PORT}`);
