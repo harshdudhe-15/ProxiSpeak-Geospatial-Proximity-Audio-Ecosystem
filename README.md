@@ -348,7 +348,7 @@ To test spatial proximity audio with two users:
 
 ## 12. Automated Test Results
 
-### Server Tests (15 Passed, 0 Failed)
+### Server Tests (21 Passed, 0 Failed across 5 Test Suites)
 ```
 ✓ CollisionService & Boundary Clamping
   - clampToBounds clamps position inside width and height
@@ -369,9 +369,16 @@ To test spatial proximity audio with two users:
   - GET /api/offices auto-seeds default office if empty
   - POST /api/users/session creates unique session identity
   - Planar Geospatial Query: POST /api/offices/:id/snapshot & GET /nearby ($near query)
+✓ Real-Time Socket.IO Signaling & Movement Integration
+  - connects two clients, joins office, and verifies initial state sync
+  - triggers proximity:entered when Bob joins within earshot with deterministic initiator
+  - relays WebRTC offer, answer, and ice-candidate between peers
+  - synchronizes microphone mute/unmute state broadcast
+  - synchronizes movement and triggers proximity:left when moving beyond hysteresis
+  - handles user departure and cleans up presence state
 ```
 
-### Client Tests (8 Passed, 0 Failed)
+### Client Tests (11 Passed, 0 Failed across 3 Test Suites)
 ```
 ✓ src/test/geometry.test.js
   - calculates Euclidean distance accurately
@@ -383,6 +390,10 @@ To test spatial proximity audio with two users:
   - HeaderBar renders brand title and online user count
   - ControlDock renders mic mute, deafen, and leave buttons
   - LobbyModal renders display name input and enter office button
+✓ src/test/webrtcAudio.test.js
+  - preserves early ICE candidates when received before getOrCreatePeer is invoked
+  - delivers remote track via fallback MediaStream when event.streams is empty
+  - attaches HTMLAudioElement anchor and builds Web Audio graph in SpatialAudioMixer
 ```
 
 ---

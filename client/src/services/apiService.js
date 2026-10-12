@@ -3,9 +3,6 @@
  */
 
 const getApiBase = () => {
-  // if (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null') {
-  //   return `${window.location.origin}/api`;
-  // }
   const baseUrl = import.meta.env.VITE_API_URL;
 
   if (baseUrl) {
