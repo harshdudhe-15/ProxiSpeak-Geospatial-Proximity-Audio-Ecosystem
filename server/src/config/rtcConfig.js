@@ -10,18 +10,25 @@ export function getIceServers() {
     .filter(Boolean)
     .map(url => ({ urls: url }));
 
-  // If TURN credentials are provided, append TURN server
+  // If TURN credentials are provided, append TURN server(s)
   if (process.env.RTC_TURN_SERVER) {
-    const turnConfig = {
-      urls: process.env.RTC_TURN_SERVER,
-    };
-    if (process.env.RTC_TURN_USERNAME) {
-      turnConfig.username = process.env.RTC_TURN_USERNAME;
+    const turnUrls = process.env.RTC_TURN_SERVER
+      .split(',')
+      .map(url => url.trim())
+      .filter(Boolean);
+
+    if (turnUrls.length > 0) {
+      const turnConfig = {
+        urls: turnUrls.length === 1 ? turnUrls[0] : turnUrls,
+      };
+      if (process.env.RTC_TURN_USERNAME) {
+        turnConfig.username = process.env.RTC_TURN_USERNAME;
+      }
+      if (process.env.RTC_TURN_CREDENTIAL) {
+        turnConfig.credential = process.env.RTC_TURN_CREDENTIAL;
+      }
+      iceServers.push(turnConfig);
     }
-    if (process.env.RTC_TURN_CREDENTIAL) {
-      turnConfig.credential = process.env.RTC_TURN_CREDENTIAL;
-    }
-    iceServers.push(turnConfig);
   }
 
   return iceServers;

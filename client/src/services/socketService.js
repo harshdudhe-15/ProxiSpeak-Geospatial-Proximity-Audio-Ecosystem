@@ -11,6 +11,7 @@ export class SocketService {
     this.socket = null;
     this.connected = false;
     this.eventListeners = new Map();
+    this.lastJoinPayload = null;
   }
 
   connect(url = import.meta.env.VITE_API_URL || window.location.origin) {
@@ -28,6 +29,12 @@ export class SocketService {
       // console.log(`[SocketService] Connected with socket ID: ${this.socket.id}`);
       this.connected = true;
       this.emitInternal('connection:change', { connected: true, socketId: this.socket.id });
+
+      // Automatically re-join office if socket reconnected after server restart or network interruption
+      if (this.lastJoinPayload) {
+        console.log('[SocketService] Socket reconnected. Re-joining office session...');
+        this.socket.emit('office:join', this.lastJoinPayload);
+      }
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -43,6 +50,9 @@ export class SocketService {
 
     // Office events
     this.socket.on('office:state', (data) => {
+      if (data.currentUser?.userId) {
+        webRtcService.setLocalUserId(data.currentUser.userId);
+      }
       if (data.iceServers) {
         webRtcService.setIceServers(data.iceServers);
       }
@@ -113,12 +123,14 @@ export class SocketService {
   }
 
   joinOffice(payload) {
+    this.lastJoinPayload = payload ? { ...payload } : null;
     if (this.socket) {
       this.socket.emit('office:join', payload);
     }
   }
 
   leaveOffice() {
+    this.lastJoinPayload = null;
     if (this.socket) {
       this.socket.emit('office:leave');
     }

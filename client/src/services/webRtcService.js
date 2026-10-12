@@ -3,10 +3,12 @@ import { spatialAudioMixer } from './spatialAudioMixer.js';
 /**
  * WebRTC Peer-to-Peer Audio Service
  * Manages local microphone access, peer connections lifecycle,
- * deterministic SDP offer/answer negotiation, and ICE candidate queuing.
+ * deterministic SDP offer/answer negotiation with collision resolution (Perfect Negotiation),
+ * safe ICE candidate queuing, and bounded recovery.
  */
 export class WebRtcService {
   constructor() {
+    this.localUserId = null;
     this.localStream = null;
     this.iceServers = [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -18,12 +20,43 @@ export class WebRtcService {
     this.iceQueues = new Map();
     // peerId -> connectionState
     this.connectionStates = new Map();
+    // peerId -> { makingOffer: boolean, ignoreOffer: boolean }
+    this.peerFlags = new Map();
+    // peerId -> socket reference
+    this.peerSockets = new Map();
+    // peerId -> number of ICE restart attempts
+    this.restartAttempts = new Map();
+    // In-memory diagnostic logs (capped at last 100 entries)
+    this.diagnosticsLog = [];
 
     this.micMuted = false;
     this.micError = null;
     this.localAudioCtx = null;
     this.localAnalyser = null;
     this.onStateChangeCallbacks = new Set();
+  }
+
+  setLocalUserId(userId) {
+    if (userId) {
+      this.localUserId = String(userId);
+    }
+  }
+
+  /**
+   * Deterministic polite peer selection:
+   * The peer with lexicographically higher ID is polite.
+   * This guarantees that in any pair, exactly one peer is polite and one is impolite.
+   */
+  isPolite(peerId) {
+    if (!this.localUserId || !peerId) return false;
+    return this.localUserId > String(peerId);
+  }
+
+  getPeerFlags(peerId) {
+    if (!this.peerFlags.has(peerId)) {
+      this.peerFlags.set(peerId, { makingOffer: false, ignoreOffer: false });
+    }
+    return this.peerFlags.get(peerId);
   }
 
   setIceServers(servers) {
@@ -49,6 +82,45 @@ export class WebRtcService {
     }
   }
 
+  getConnectionState(peerId) {
+    return this.connectionStates.get(peerId) || 'disconnected';
+  }
+
+  /**
+   * Records development-safe structured diagnostics without leaking sensitive media or credentials.
+   */
+  logDiagnostic(peerId, event, details = {}) {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      peerId,
+      event,
+      ...details
+    };
+    this.diagnosticsLog.push(entry);
+    if (this.diagnosticsLog.length > 150) {
+      this.diagnosticsLog.shift();
+    }
+    // console.log(`[WebRTC Diagnostic] [${peerId}] ${event}:`, details);
+  }
+
+  getDiagnostics() {
+    return {
+      localUserId: this.localUserId,
+      hasLocalStream: Boolean(this.localStream),
+      micMuted: this.micMuted,
+      peers: Array.from(this.peers.keys()).map(peerId => ({
+        peerId,
+        connectionState: this.connectionStates.get(peerId),
+        signalingState: this.peers.get(peerId)?.signalingState,
+        iceConnectionState: this.peers.get(peerId)?.iceConnectionState,
+        iceGatheringState: this.peers.get(peerId)?.iceGatheringState,
+        restartAttempts: this.restartAttempts.get(peerId) || 0,
+        isPolite: this.isPolite(peerId)
+      })),
+      recentEvents: this.diagnosticsLog.slice(-30)
+    };
+  }
+
   /**
    * Requests local microphone access.
    */
@@ -68,15 +140,41 @@ export class WebRtcService {
         video: false
       });
 
-      // Attach local stream tracks to any already created peers
-      for (const [peerId, pc] of this.peers.entries()) {
-        const senders = pc.getSenders ? pc.getSenders() : [];
+      // Synchronize initial mute state onto tracks
+      if (this.micMuted) {
         this.localStream.getAudioTracks().forEach(track => {
-          const hasTrack = senders.some(s => s.track && s.track.kind === 'audio');
-          if (!hasTrack) {
+          track.enabled = false;
+        });
+      }
+
+      // Attach or replace local stream tracks on any already-created peer connections
+      for (const [peerId, pc] of this.peers.entries()) {
+        if (pc.signalingState === 'closed') continue;
+
+        const senders = pc.getSenders ? pc.getSenders() : [];
+        let trackNewlyAdded = false;
+
+        this.localStream.getAudioTracks().forEach(track => {
+          if (track.readyState !== 'live') return;
+
+          const existingAudioSender = senders.find(s => (s.track && s.track.kind === 'audio') || s.kind === 'audio');
+          if (existingAudioSender) {
+            existingAudioSender.replaceTrack(track).catch(err => {
+              console.warn(`[WebRTC] replaceTrack warning for peer ${peerId}:`, err.message);
+            });
+          } else {
             pc.addTrack(track, this.localStream);
+            trackNewlyAdded = true;
           }
         });
+
+        // If a track was newly added to an already stable/connected connection, renegotiate to ensure remote receives it!
+        if (trackNewlyAdded && (pc.signalingState === 'stable' || pc.connectionState === 'connected')) {
+          const socket = this.peerSockets.get(peerId);
+          if (socket) {
+            this.initiateOffer(peerId, socket);
+          }
+        }
       }
 
       // Initialize local analyzer for local voice amplitude visualization (do NOT route to destination)
@@ -98,7 +196,9 @@ export class WebRtcService {
         }
       }
 
-      // console.log('[WebRTC] Local microphone stream acquired successfully.');
+      this.logDiagnostic('local', 'microphone_acquired', {
+        tracks: this.localStream.getAudioTracks().map(t => ({ id: t.id, enabled: t.enabled, readyState: t.readyState }))
+      });
       this.notifyStateChange();
       return this.localStream;
     } catch (err) {
@@ -106,6 +206,7 @@ export class WebRtcService {
       this.micError = err.name === 'NotAllowedError'
         ? 'Microphone permission denied. You can still navigate and listen to colleagues.'
         : `Microphone unavailable: ${err.message}`;
+      this.logDiagnostic('local', 'microphone_error', { name: err.name, message: err.message });
       this.notifyStateChange();
       return null;
     }
@@ -149,34 +250,49 @@ export class WebRtcService {
    */
   getOrCreatePeer(peerId, socket) {
     if (this.peers.has(peerId)) {
-      return this.peers.get(peerId);
+      const existingPc = this.peers.get(peerId);
+      if (existingPc.signalingState !== 'closed') {
+        if (socket) this.peerSockets.set(peerId, socket);
+        return existingPc;
+      }
+      // Clean up dead connection before recreating
+      this.closePeer(peerId);
     }
 
-    console.log(`[WebRTC] Creating RTCPeerConnection for peer: ${peerId}`);
+    if (socket) {
+      this.peerSockets.set(peerId, socket);
+    }
+
     const pc = new RTCPeerConnection({
       iceServers: this.iceServers
     });
 
     this.peers.set(peerId, pc);
-    // Preserve any early queued ICE candidates that arrived before getOrCreatePeer was called
     if (!this.iceQueues.has(peerId)) {
       this.iceQueues.set(peerId, []);
     }
     this.connectionStates.set(peerId, 'new');
+    this.restartAttempts.set(peerId, 0);
+
+    this.logDiagnostic(peerId, 'peer_created', {
+      iceServersCount: this.iceServers.length,
+      isPolite: this.isPolite(peerId)
+    });
 
     // Add local audio tracks to peer connection
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach(track => {
-        console.log(`[WebRTC] Adding local audio track (${track.id}) to peer ${peerId}`);
-        pc.addTrack(track, this.localStream);
+        if (track.readyState === 'live') {
+          pc.addTrack(track, this.localStream);
+        }
       });
     }
 
     // ICE Candidate handler
     pc.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        // console.log(`[WebRTC] Sending ICE candidate to peer ${peerId}:`, event.candidate.candidate);
-        socket.emit('rtc:ice-candidate', {
+      const activeSocket = socket || this.peerSockets.get(peerId);
+      if (event.candidate && activeSocket) {
+        activeSocket.emit('rtc:ice-candidate', {
           targetPeerId: peerId,
           candidate: event.candidate
         });
@@ -185,23 +301,33 @@ export class WebRtcService {
 
     // Remote audio track received (handles both event.streams and fallback event.track)
     pc.ontrack = (event) => {
-      console.log(`[WebRTC] Received remote audio track from peer: ${peerId}`, event.track);
+      this.logDiagnostic(peerId, 'track_received', {
+        trackId: event.track?.id,
+        kind: event.track?.kind,
+        enabled: event.track?.enabled,
+        muted: event.track?.muted
+      });
+
       const stream = (event.streams && event.streams[0]) || new MediaStream([event.track]);
       spatialAudioMixer.addPeerStream(peerId, stream);
+      this.notifyStateChange();
     };
 
     // ICE Connection state changes
     pc.oniceconnectionstatechange = () => {
-      console.log(`[WebRTC] Peer ${peerId} ICE connection state: ${pc.iceConnectionState}`);
+      this.logDiagnostic(peerId, 'ice_state_change', { iceState: pc.iceConnectionState });
     };
 
     // Connection state changes
     pc.onconnectionstatechange = () => {
-      console.log(`[WebRTC] Peer ${peerId} connection state: ${pc.connectionState}`);
-      this.connectionStates.set(peerId, pc.connectionState);
+      const state = pc.connectionState;
+      this.connectionStates.set(peerId, state);
+      this.logDiagnostic(peerId, 'connection_state_change', { state });
       this.notifyStateChange();
 
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      if (state === 'failed') {
+        this.handleConnectionFailure(peerId, socket || this.peerSockets.get(peerId));
+      } else if (state === 'closed') {
         this.closePeer(peerId);
       }
     };
@@ -210,36 +336,78 @@ export class WebRtcService {
   }
 
   /**
-   * Initiates WebRTC offer when entering proximity if designated as offerer.
+   * Initiates WebRTC offer when entering proximity or performing renegotiation.
    */
-  async initiateOffer(peerId, socket) {
-    try {
-      console.log(`[WebRTC] Initiating SDP offer to peer: ${peerId}`);
-      const pc = this.getOrCreatePeer(peerId, socket);
+  async initiateOffer(peerId, socket, isIceRestart = false) {
+    const pc = this.getOrCreatePeer(peerId, socket);
+    if (!pc || pc.signalingState === 'closed') return;
 
-      // Create and set local description
+    const flags = this.getPeerFlags(peerId);
+    try {
+      flags.makingOffer = true;
+      this.logDiagnostic(peerId, 'offer_initiating', { isIceRestart });
+
       const offer = await pc.createOffer({
-        offerToReceiveAudio: true
+        offerToReceiveAudio: true,
+        iceRestart: isIceRestart
       });
+
+      // Avoid setting local description if signalingState changed while awaiting createOffer
+      if (pc.signalingState !== 'stable') {
+        this.logDiagnostic(peerId, 'offer_aborted_unstable_state', { state: pc.signalingState });
+        return;
+      }
+
       await pc.setLocalDescription(offer);
 
-      socket.emit('rtc:offer', {
-        targetPeerId: peerId,
-        sdp: pc.localDescription
-      });
-      console.log(`[WebRTC] Dispatched SDP offer to peer: ${peerId}`);
+      const activeSocket = socket || this.peerSockets.get(peerId);
+      if (activeSocket) {
+        activeSocket.emit('rtc:offer', {
+          targetPeerId: peerId,
+          sdp: pc.localDescription || offer
+        });
+        this.logDiagnostic(peerId, 'offer_sent', { type: pc.localDescription?.type || offer?.type, isIceRestart });
+      }
     } catch (err) {
       console.error(`[WebRTC] Error initiating offer to ${peerId}:`, err);
+      this.logDiagnostic(peerId, 'offer_initiate_error', { message: err.message });
+    } finally {
+      flags.makingOffer = false;
     }
   }
 
   /**
-   * Handles incoming SDP offer from a peer.
+   * Handles incoming SDP offer with Perfect Negotiation collision resolution.
    */
   async handleOffer(senderPeerId, sdp, socket) {
+    if (!sdp || !senderPeerId) return;
+
     try {
-      console.log(`[WebRTC] Handling incoming SDP offer from peer: ${senderPeerId}`);
+      this.logDiagnostic(senderPeerId, 'offer_received', { sdpType: sdp.type });
       const pc = this.getOrCreatePeer(senderPeerId, socket);
+      if (!pc || pc.signalingState === 'closed') return;
+
+      const isPolite = this.isPolite(senderPeerId);
+      const flags = this.getPeerFlags(senderPeerId);
+      const offerCollision = (pc.signalingState !== 'stable') || flags.makingOffer;
+
+      flags.ignoreOffer = !isPolite && offerCollision;
+      if (flags.ignoreOffer) {
+        this.logDiagnostic(senderPeerId, 'offer_collision_ignored', {
+          isPolite: false,
+          state: pc.signalingState,
+          makingOffer: flags.makingOffer
+        });
+        return;
+      }
+
+      if (offerCollision) {
+        this.logDiagnostic(senderPeerId, 'offer_collision_rollback', {
+          isPolite: true,
+          state: pc.signalingState
+        });
+        await pc.setLocalDescription({ type: 'rollback' });
+      }
 
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       await this.flushIceQueue(senderPeerId, pc);
@@ -249,53 +417,71 @@ export class WebRtcService {
       });
       await pc.setLocalDescription(answer);
 
-      socket.emit('rtc:answer', {
-        targetPeerId: senderPeerId,
-        sdp: pc.localDescription
-      });
-      console.log(`[WebRTC] Dispatched SDP answer to peer: ${senderPeerId}`);
+      const activeSocket = socket || this.peerSockets.get(senderPeerId);
+      if (activeSocket) {
+        activeSocket.emit('rtc:answer', {
+          targetPeerId: senderPeerId,
+          sdp: pc.localDescription || answer
+        });
+        this.logDiagnostic(senderPeerId, 'answer_sent', { type: pc.localDescription?.type || answer?.type });
+      }
     } catch (err) {
       console.error(`[WebRTC] Error handling offer from ${senderPeerId}:`, err);
+      this.logDiagnostic(senderPeerId, 'offer_handle_error', { message: err.message });
     }
   }
 
   /**
-   * Handles incoming SDP answer from a peer.
+   * Handles incoming SDP answer from a peer safely.
    */
   async handleAnswer(senderPeerId, sdp) {
-    try {
-      console.log(`[WebRTC] Handling incoming SDP answer from peer: ${senderPeerId}`);
-      const pc = this.peers.get(senderPeerId);
-      if (!pc) return;
+    if (!sdp || !senderPeerId) return;
 
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-      await this.flushIceQueue(senderPeerId, pc);
-      console.log(`[WebRTC] Established remote description answer for peer: ${senderPeerId}`);
-    } catch (err) {
-      console.error(`[WebRTC] Error handling answer from ${senderPeerId}:`, err);
-    }
-  }
-
-  /**
-   * Handles incoming ICE candidate. Queues candidate if remote description is not ready yet.
-   */
-  async handleIceCandidate(senderPeerId, candidate) {
-    if (!candidate) return;
     try {
+      this.logDiagnostic(senderPeerId, 'answer_received', { sdpType: sdp.type });
       const pc = this.peers.get(senderPeerId);
-      if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) {
-        // Queue candidate until setRemoteDescription completes
-        const queue = this.iceQueues.get(senderPeerId) || [];
-        queue.push(candidate);
-        this.iceQueues.set(senderPeerId, queue);
-        // console.log(`[WebRTC] Queued ICE candidate for ${senderPeerId} (total: ${queue.length})`);
+      if (!pc || pc.signalingState === 'closed') return;
+
+      // Only apply answer if we are awaiting one (signalingState is 'have-local-offer')
+      if (pc.signalingState !== 'have-local-offer') {
+        this.logDiagnostic(senderPeerId, 'answer_ignored_unexpected_state', { state: pc.signalingState });
         return;
       }
 
-      const iceCandidate = typeof RTCIceCandidate !== 'undefined' ? new RTCIceCandidate(candidate) : candidate;
-      await pc.addIceCandidate(iceCandidate);
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      await this.flushIceQueue(senderPeerId, pc);
+      this.logDiagnostic(senderPeerId, 'answer_applied_stable', { state: pc.signalingState });
     } catch (err) {
-      console.error(`[WebRTC] Error adding ICE candidate from ${senderPeerId}:`, err);
+      console.error(`[WebRTC] Error handling answer from ${senderPeerId}:`, err);
+      this.logDiagnostic(senderPeerId, 'answer_handle_error', { message: err.message });
+    }
+  }
+
+  /**
+   * Handles incoming ICE candidate with safe queuing if remote description is not ready yet.
+   */
+  async handleIceCandidate(senderPeerId, candidate) {
+    if (!candidate) return;
+
+    try {
+      const pc = this.peers.get(senderPeerId);
+      // Queue candidate if peer connection not yet ready or remote description not yet set
+      if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) {
+        const queue = this.iceQueues.get(senderPeerId) || [];
+        queue.push(candidate);
+        this.iceQueues.set(senderPeerId, queue);
+        return;
+      }
+
+      if (pc.signalingState === 'closed') return;
+
+      // Ignore end-of-candidate indicators with empty candidate string
+      if (candidate.candidate) {
+        const iceCandidate = typeof RTCIceCandidate !== 'undefined' ? new RTCIceCandidate(candidate) : candidate;
+        await pc.addIceCandidate(iceCandidate);
+      }
+    } catch (err) {
+      console.warn(`[WebRTC] Error adding ICE candidate from ${senderPeerId}:`, err.message);
     }
   }
 
@@ -306,17 +492,31 @@ export class WebRtcService {
     const queue = this.iceQueues.get(peerId);
     if (!queue || !queue.length) return;
 
-    console.log(`[WebRTC] Flushing ${queue.length} queued ICE candidate(s) for ${peerId}`);
     const candidates = queue.splice(0, queue.length);
     for (const candidate of candidates) {
       try {
-        if (candidate) {
+        if (candidate && candidate.candidate && pc.signalingState !== 'closed') {
           const iceCandidate = typeof RTCIceCandidate !== 'undefined' ? new RTCIceCandidate(candidate) : candidate;
           await pc.addIceCandidate(iceCandidate);
         }
       } catch (err) {
-        console.warn(`[WebRTC] Error flushing candidate for ${peerId}:`, err);
+        console.warn(`[WebRTC] Error flushing candidate for ${peerId}:`, err.message);
       }
+    }
+  }
+
+  /**
+   * Handles connection failure with bounded ICE restart (max 2 attempts).
+   */
+  handleConnectionFailure(peerId, socket) {
+    const attempts = this.restartAttempts.get(peerId) || 0;
+    if (attempts < 2 && socket) {
+      this.restartAttempts.set(peerId, attempts + 1);
+      this.logDiagnostic(peerId, 'attempting_ice_restart', { attempt: attempts + 1 });
+      this.initiateOffer(peerId, socket, true);
+    } else {
+      this.logDiagnostic(peerId, 'connection_failed_closing', { attempts });
+      this.closePeer(peerId);
     }
   }
 
@@ -327,6 +527,10 @@ export class WebRtcService {
     const pc = this.peers.get(peerId);
     if (pc) {
       try {
+        pc.onicecandidate = null;
+        pc.ontrack = null;
+        pc.oniceconnectionstatechange = null;
+        pc.onconnectionstatechange = null;
         pc.close();
       } catch (err) {
         console.warn(`[WebRTC] Warning closing peer ${peerId}:`, err);
@@ -336,6 +540,9 @@ export class WebRtcService {
 
     this.iceQueues.delete(peerId);
     this.connectionStates.delete(peerId);
+    this.peerFlags.delete(peerId);
+    this.peerSockets.delete(peerId);
+    this.restartAttempts.delete(peerId);
     spatialAudioMixer.removePeer(peerId);
     this.notifyStateChange();
   }
@@ -349,7 +556,13 @@ export class WebRtcService {
     }
 
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (e) {
+          // ignore
+        }
+      });
       this.localStream = null;
     }
 

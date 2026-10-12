@@ -8,10 +8,27 @@ import { calculateDistance, calculatePan, calculateGain } from '../utils/geometr
 export class SpatialAudioMixer {
   constructor() {
     this.audioCtx = null;
-    // peerId -> { stream, sourceNode, gainNode, pannerNode, analyserNode, isObstructed, micMuted }
+    // peerId -> { stream, audioEl, sourceNode, gainNode, pannerNode, analyserNode, isObstructed, micMuted, lastComputedGain, lastTargetGain, lastTargetPan }
     this.peerNodes = new Map();
     this.hearingRadius = 120;
     this.masterMuted = false;
+    this.isAutoplayBlocked = false;
+    this.autoplayListeners = new Set();
+  }
+
+  onAutoplayBlockedChange(cb) {
+    this.autoplayListeners.add(cb);
+    return () => this.autoplayListeners.delete(cb);
+  }
+
+  setAutoplayBlocked(blocked) {
+    const next = Boolean(blocked);
+    if (this.isAutoplayBlocked !== next) {
+      this.isAutoplayBlocked = next;
+      for (const cb of this.autoplayListeners) {
+        cb(this.isAutoplayBlocked);
+      }
+    }
   }
 
   /**
@@ -30,13 +47,40 @@ export class SpatialAudioMixer {
     if (this.audioCtx.state === 'suspended') {
       try {
         await this.audioCtx.resume();
-        // console.log('[SpatialAudio] AudioContext resumed successfully.');
+        this.setAutoplayBlocked(false);
       } catch (err) {
         console.warn('[SpatialAudio] Failed to resume AudioContext:', err);
       }
+    } else if (this.audioCtx.state === 'running') {
+      this.setAutoplayBlocked(false);
     }
 
     return this.audioCtx;
+  }
+
+  /**
+   * Resumes AudioContext and attempts to play all peer audio sinks.
+   * Useful when browser autoplay policy blocks initial audio until a user gesture.
+   */
+  async resumeAllAudio() {
+    await this.ensureAudioContext();
+
+    for (const [peerId, nodeGroup] of this.peerNodes.entries()) {
+      if (nodeGroup.audioEl) {
+        try {
+          const p = nodeGroup.audioEl.play();
+          if (p !== undefined) {
+            await p;
+          }
+        } catch (err) {
+          console.warn(`[SpatialAudio] Resume playback failed for peer ${peerId}:`, err.message);
+        }
+      }
+    }
+
+    if (this.audioCtx && this.audioCtx.state === 'running') {
+      this.setAutoplayBlocked(false);
+    }
   }
 
   setHearingRadius(radius) {
@@ -66,20 +110,52 @@ export class SpatialAudioMixer {
     this.removePeer(peerId);
 
     try {
-      // Workaround for Chromium bug: Remote WebRTC MediaStreams remain silent in Web Audio API
-      // unless anchored to an active playing HTMLAudioElement.
+      // Workaround for Chromium WebRTC WebAudio bug:
+      // In Chromium, remote MediaStreams do not emit samples into createMediaStreamSource
+      // unless played by an active HTMLAudioElement.
+      //
+      // CRITICAL CHROME BUG FIX:
+      // In Chromium, audioEl.muted = true can mute the underlying MediaStreamTrack at the
+      // renderer level, silencing Web Audio API's createMediaStreamSource(stream)!
+      // Therefore, we keep audioEl.muted = false, but set audioEl.volume = 0.
+      // Setting volume = 0 mutes the raw element output to prevent echo/double audio,
+      // while allowing Chrome's WebRTC decoder to decode audio packets for Web Audio API!
       let audioEl = null;
       if (typeof document !== 'undefined') {
         try {
+          let container = document.getElementById('proxispeak-audio-sinks');
+          if (!container && document.body) {
+            container = document.createElement('div');
+            container.id = 'proxispeak-audio-sinks';
+            container.style.position = 'fixed';
+            container.style.left = '-9999px';
+            container.style.top = '-9999px';
+            container.style.width = '0';
+            container.style.height = '0';
+            container.style.overflow = 'hidden';
+            container.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(container);
+          }
+
           audioEl = document.createElement('audio');
+          audioEl.id = `remote-audio-${peerId}`;
           audioEl.srcObject = stream;
-          audioEl.muted = true; // Muted so raw un-spatialized audio does not bypass Web Audio graph
+          audioEl.muted = false; // NOT muted, so track decoder stays active in Chromium
+          audioEl.volume = 0;    // Zero volume prevents raw un-spatialized audio from leaking
           audioEl.playsInline = true;
           audioEl.autoplay = true;
+
+          if (container) {
+            container.appendChild(audioEl);
+          }
+
           const playPromise = audioEl.play();
           if (playPromise !== undefined) {
             playPromise.catch(err => {
-              console.warn(`[SpatialAudio] HTMLAudioElement anchor play warning for ${peerId}:`, err.message);
+              console.warn(`[SpatialAudio] HTMLAudioElement play blocked for ${peerId}:`, err.message);
+              if (err.name === 'NotAllowedError') {
+                this.setAutoplayBlocked(true);
+              }
             });
           }
         } catch (e) {
@@ -205,6 +281,21 @@ export class SpatialAudioMixer {
   }
 
   /**
+   * Returns true if peer audio stream is active, Web Audio is running, and gain > 0.
+   */
+  isPeerAudible(peerId) {
+    const nodeGroup = this.peerNodes.get(peerId);
+    if (!nodeGroup || !this.audioCtx) return false;
+    if (this.audioCtx.state !== 'running') return false;
+    if (this.masterMuted || nodeGroup.micMuted) return false;
+    return (nodeGroup.lastComputedGain || 0) > 0;
+  }
+
+  hasPeerStream(peerId) {
+    return this.peerNodes.has(peerId);
+  }
+
+  /**
    * Samples current audio amplitude level [0, 100] for visualizer waves.
    */
   getPeerAudioLevel(peerId) {
@@ -233,6 +324,9 @@ export class SpatialAudioMixer {
       if (nodeGroup.audioEl) {
         nodeGroup.audioEl.pause();
         nodeGroup.audioEl.srcObject = null;
+        if (nodeGroup.audioEl.parentNode) {
+          nodeGroup.audioEl.parentNode.removeChild(nodeGroup.audioEl);
+        }
       }
       if (nodeGroup.gainNode) nodeGroup.gainNode.disconnect();
       if (nodeGroup.pannerNode) nodeGroup.pannerNode.disconnect();
@@ -251,6 +345,10 @@ export class SpatialAudioMixer {
   destroy() {
     for (const peerId of Array.from(this.peerNodes.keys())) {
       this.removePeer(peerId);
+    }
+    const container = typeof document !== 'undefined' ? document.getElementById('proxispeak-audio-sinks') : null;
+    if (container && container.parentNode) {
+      container.parentNode.removeChild(container);
     }
     if (this.audioCtx && this.audioCtx.state !== 'closed') {
       try {

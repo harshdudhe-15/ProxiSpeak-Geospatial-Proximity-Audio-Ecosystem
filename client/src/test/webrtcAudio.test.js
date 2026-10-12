@@ -27,6 +27,7 @@ describe('WebRTC & Spatial Audio Pipeline Unit Tests', () => {
         this.config = config;
         this.connectionState = 'new';
         this.iceConnectionState = 'new';
+        this.signalingState = 'stable';
         this.addTrack = vi.fn();
         this.addIceCandidate = mockAddIceCandidate;
         this.createOffer = vi.fn().mockResolvedValue({ type: 'offer', sdp: 'fake-sdp' });
@@ -53,6 +54,8 @@ describe('WebRTC & Spatial Audio Pipeline Unit Tests', () => {
 
     class MockRTCPeerConnection {
       constructor() {
+        this.connectionState = 'new';
+        this.signalingState = 'stable';
         this.addTrack = vi.fn();
         this.close = vi.fn();
       }
@@ -81,7 +84,7 @@ describe('WebRTC & Spatial Audio Pipeline Unit Tests', () => {
     expect(mediaStreamSpy).toHaveBeenCalledWith([fakeTrack]);
   });
 
-  it('attaches HTMLAudioElement anchor and builds Web Audio graph in SpatialAudioMixer', async () => {
+  it('attaches HTMLAudioElement anchor with volume 0 and muted false to prevent Chromium silencing bug', async () => {
     // Mock AudioContext and nodes
     const mockGainParam = { value: 0, setTargetAtTime: vi.fn() };
     const mockGainNode = { gain: mockGainParam, connect: vi.fn(), disconnect: vi.fn() };
@@ -108,8 +111,11 @@ describe('WebRTC & Spatial Audio Pipeline Unit Tests', () => {
     expect(peerGroup).toBeDefined();
     expect(peerGroup.sourceNode).toBe(mockSourceNode);
     expect(peerGroup.gainNode).toBe(mockGainNode);
-    expect(peerGroup.audioEl).toBeDefined(); // HTMLAudioElement anchor exists
-    expect(peerGroup.audioEl.muted).toBe(true); // Muted to prevent raw leak
+    expect(peerGroup.audioEl).toBeDefined();
+    // Chromium fix: muted must be FALSE so browser audio decoder does not halt RTP frames
+    expect(peerGroup.audioEl.muted).toBe(false);
+    // Volume must be 0 so raw un-spatialized audio does not bypass Web Audio graph
+    expect(peerGroup.audioEl.volume).toBe(0);
 
     // Verify spatial update
     mixer.updatePeerSpatial('peer_789', { x: 100, y: 100 }, { x: 140, y: 100 });
@@ -119,5 +125,87 @@ describe('WebRTC & Spatial Audio Pipeline Unit Tests', () => {
     mixer.removePeer('peer_789');
     expect(mixer.peerNodes.has('peer_789')).toBe(false);
     expect(mockGainNode.disconnect).toHaveBeenCalled();
+  });
+
+  it('resolves offer collision: polite peer rolls back while impolite peer ignores collision', async () => {
+    // Test polite peer behavior
+    webRtc.setLocalUserId('user_zzz'); // zzz > aaa -> isPolite = true
+    expect(webRtc.isPolite('user_aaa')).toBe(true);
+
+    const mockSetLocalDescription = vi.fn().mockResolvedValue(undefined);
+    const mockSetRemoteDescription = vi.fn().mockResolvedValue(undefined);
+    const mockCreateAnswer = vi.fn().mockResolvedValue({ type: 'answer', sdp: 'fake-answer' });
+
+    class MockPoliteRTCPeerConnection {
+      constructor() {
+        this.connectionState = 'new';
+        this.signalingState = 'have-local-offer'; // Collision! Incoming offer while having local offer
+        this.setLocalDescription = mockSetLocalDescription;
+        this.setRemoteDescription = mockSetRemoteDescription;
+        this.createAnswer = mockCreateAnswer;
+        this.close = vi.fn();
+      }
+    }
+    global.RTCPeerConnection = MockPoliteRTCPeerConnection;
+    global.RTCSessionDescription = class { constructor(init) { Object.assign(this, init); } };
+
+    const mockSocket = { emit: vi.fn() };
+    await webRtc.handleOffer('user_aaa', { type: 'offer', sdp: 'remote-offer' }, mockSocket);
+
+    // Polite peer rolls back local description then accepts incoming offer
+    expect(mockSetLocalDescription).toHaveBeenCalledWith({ type: 'rollback' });
+    expect(mockSetRemoteDescription).toHaveBeenCalledWith(expect.objectContaining({ type: 'offer' }));
+    expect(mockCreateAnswer).toHaveBeenCalled();
+    expect(mockSocket.emit).toHaveBeenCalledWith('rtc:answer', expect.anything());
+
+    // Test impolite peer behavior
+    webRtc.setLocalUserId('user_aaa'); // aaa < zzz -> isPolite = false
+    expect(webRtc.isPolite('user_zzz')).toBe(false);
+
+    const impoliteSetLocalDesc = vi.fn();
+    const impoliteSetRemoteDesc = vi.fn();
+    class MockImpoliteRTCPeerConnection {
+      constructor() {
+        this.connectionState = 'new';
+        this.signalingState = 'have-local-offer'; // Collision!
+        this.setLocalDescription = impoliteSetLocalDesc;
+        this.setRemoteDescription = impoliteSetRemoteDesc;
+        this.close = vi.fn();
+      }
+    }
+    global.RTCPeerConnection = MockImpoliteRTCPeerConnection;
+
+    const impoliteSocket = { emit: vi.fn() };
+    await webRtc.handleOffer('user_zzz', { type: 'offer', sdp: 'remote-offer' }, impoliteSocket);
+
+    // Impolite peer ignores colliding offer
+    expect(impoliteSetLocalDesc).not.toHaveBeenCalled();
+    expect(impoliteSetRemoteDesc).not.toHaveBeenCalled();
+    expect(impoliteSocket.emit).not.toHaveBeenCalled();
+  });
+
+  it('triggers bounded ICE restart on connection failure', () => {
+    class MockFailingRTCPeerConnection {
+      constructor() {
+        this.connectionState = 'new';
+        this.signalingState = 'stable';
+        this.createOffer = vi.fn().mockResolvedValue({ type: 'offer', sdp: 'restart-offer' });
+        this.setLocalDescription = vi.fn().mockResolvedValue(undefined);
+        this.close = vi.fn();
+      }
+    }
+    global.RTCPeerConnection = MockFailingRTCPeerConnection;
+
+    const mockSocket = { emit: vi.fn() };
+    const pc = webRtc.getOrCreatePeer('peer_fail', mockSocket);
+
+    expect(webRtc.restartAttempts.get('peer_fail')).toBe(0);
+
+    // Simulate connection failure
+    pc.connectionState = 'failed';
+    pc.onconnectionstatechange();
+
+    // Verify first restart attempt incremented
+    expect(webRtc.restartAttempts.get('peer_fail')).toBe(1);
   });
 });

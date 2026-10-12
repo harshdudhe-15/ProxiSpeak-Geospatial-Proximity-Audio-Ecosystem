@@ -96,6 +96,26 @@ export function ParticipantRoster({
             const inRange = distance <= hearingRadius;
             const level = audioLevels[user.userId] || 0;
 
+            let proximityLabel;
+            const connState = webRtcService.getConnectionState(user.userId);
+            const isAudible = spatialAudioMixer.isPeerAudible(user.userId);
+
+            if (inRange) {
+              if (connState === 'connected' && isAudible) {
+                proximityLabel = `${distance}px • Audio Live`;
+              } else if (connState === 'connected') {
+                proximityLabel = `${distance}px • Connected`;
+              } else if (connState === 'connecting') {
+                proximityLabel = `${distance}px • Connecting...`;
+              } else if (connState === 'failed' || connState === 'disconnected') {
+                proximityLabel = `${distance}px • Reconnecting...`;
+              } else {
+                proximityLabel = `${distance}px • In Earshot`;
+              }
+            } else {
+              proximityLabel = `${distance}px • Out of range`;
+            }
+
             return (
               <div
                 key={user.userId}
@@ -112,7 +132,7 @@ export function ParticipantRoster({
                     <span className="roster-user-name">{user.displayName}</span>
                     <span className={`roster-proximity-tag ${inRange ? 'active' : ''}`}>
                       <Signal size={10} />
-                      {inRange ? `${distance}px • In Earshot` : `${distance}px • Out of range`}
+                      {proximityLabel}
                     </span>
                   </div>
                 </div>

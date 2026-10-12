@@ -62,6 +62,15 @@ export function initializeSocketManager(io) {
         socket.data.avatarIcon = avatarIcon || 'user';
         socket.data.micMuted = false;
 
+        // If this user already has an active socket mapped, handle departure of old socket gracefully
+        const existingSocketId = userSocketMap.get(socket.data.userId);
+        if (existingSocketId && existingSocketId !== socket.id) {
+          const oldSocket = io.sockets.sockets.get(existingSocketId);
+          if (oldSocket) {
+            oldSocket.leave(roomName);
+          }
+        }
+
         userSocketMap.set(socket.data.userId, socket.id);
 
         const roomName = `office:${socket.data.officeId}`;
@@ -318,6 +327,8 @@ export function initializeSocketManager(io) {
             senderPeerId: socket.data.userId,
             sdp
           });
+        } else {
+          console.warn(`[Socket] rtc:offer dropped: target peer ${targetPeerId} not found in userSocketMap`);
         }
       } catch (err) {
         console.error('[Socket] Error in rtc:offer:', err);
@@ -338,6 +349,8 @@ export function initializeSocketManager(io) {
             senderPeerId: socket.data.userId,
             sdp
           });
+        } else {
+          console.warn(`[Socket] rtc:answer dropped: target peer ${targetPeerId} not found in userSocketMap`);
         }
       } catch (err) {
         console.error('[Socket] Error in rtc:answer:', err);
@@ -358,6 +371,8 @@ export function initializeSocketManager(io) {
             senderPeerId: socket.data.userId,
             candidate
           });
+        } else {
+          console.warn(`[Socket] rtc:ice-candidate dropped: target peer ${targetPeerId} not found in userSocketMap`);
         }
       } catch (err) {
         console.error('[Socket] Error in rtc:ice-candidate:', err);
@@ -384,6 +399,13 @@ export function initializeSocketManager(io) {
     const officeId = socket.data.officeId;
 
     if (!userId || !officeId) return;
+
+    // Guard against race conditions during reconnect/refresh:
+    // If a new socket has already connected for this userId, do NOT delete its mapping or evict user!
+    if (userSocketMap.get(userId) !== socket.id) {
+      socket.leave(`office:${officeId}`);
+      return;
+    }
 
     userSocketMap.delete(userId);
     lastSnapshotMap.delete(userId);

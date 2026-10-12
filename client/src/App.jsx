@@ -24,6 +24,7 @@ export function App() {
   const [hearingRadius, setHearingRadius] = useState(120);
   const [isRosterOpen, setIsRosterOpen] = useState(true);
   const [statusToast, setStatusToast] = useState(null);
+  const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
 
   // Setup WebRTC and Socket listeners
   useEffect(() => {
@@ -32,6 +33,10 @@ export function App() {
       if (state.micError) {
         setStatusToast({ message: state.micError, type: 'warning' });
       }
+    });
+
+    const unsubAutoplay = spatialAudioMixer.onAutoplayBlockedChange((blocked) => {
+      setIsAutoplayBlocked(blocked);
     });
 
     const unsubConn = socketService.on('connection:change', ({ connected }) => {
@@ -80,6 +85,7 @@ export function App() {
 
     return () => {
       unsubRtc();
+      unsubAutoplay();
       unsubConn();
       unsubOfficeState();
       unsubUserJoined();
@@ -118,6 +124,9 @@ export function App() {
         avatarColor,
         avatarIcon: 'user'
       });
+
+      // Register session userId with WebRTC service for deterministic polite/impolite role selection
+      webRtcService.setLocalUserId(session.userId);
 
       // 3. Request microphone access (gracefully continues even if denied)
       await webRtcService.initLocalMicrophone();
@@ -185,6 +194,40 @@ export function App() {
 
   return (
     <div className="app-container">
+      {isAutoplayBlocked && (
+        <div
+          className="toast-notice warning"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px',
+            backgroundColor: '#f59e0b',
+            color: '#000',
+            fontWeight: 500
+          }}
+          role="alert"
+        >
+          <span>Browser audio playback is paused. Click to enable audio:</span>
+          <button
+            id="enable-audio-button"
+            onClick={() => spatialAudioMixer.resumeAllAudio()}
+            style={{
+              padding: '6px 14px',
+              backgroundColor: '#1e1b4b',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '12px'
+            }}
+          >
+            Enable Audio
+          </button>
+        </div>
+      )}
+
       {statusToast && (
         <AudioStatusToast
           message={statusToast.message}
