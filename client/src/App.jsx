@@ -125,14 +125,14 @@ export function App() {
       // 4. Connect to Socket.IO signaling server
       socketService.connect();
 
-      // 5. Join specified office room
+      // 5. Join canonical ProxiSpeak Headquarters office room
       socketService.joinOffice({
-        officeId,
+        officeId: officeId || 'hq-main',
         userId: session.userId,
         displayName: session.displayName,
         avatarColor: session.avatarColor,
         avatarIcon: session.avatarIcon,
-        x: 140,
+        x: 280,
         y: 140
       });
     } catch (err) {

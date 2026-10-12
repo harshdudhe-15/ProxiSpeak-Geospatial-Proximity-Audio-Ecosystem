@@ -58,7 +58,7 @@ export class SpatialAudioMixer {
   /**
    * Registers a remote peer's MediaStream into the Web Audio spatial pipeline.
    */
-  async addPeerStream(peerId, stream) {
+  async addPeerStream(peerId, stream, initialLocalPos = null, initialRemotePos = null) {
     await this.ensureAudioContext();
     if (!this.audioCtx) return;
 
@@ -87,14 +87,26 @@ export class SpatialAudioMixer {
         }
       }
 
+      // Compute immediate initial spatial parameters so peer is audible without waiting for render loop
+      let initialGain = 1.0;
+      let initialPan = 0;
+      if (initialLocalPos && initialRemotePos) {
+        const distance = calculateDistance(initialLocalPos, initialRemotePos);
+        initialGain = calculateGain(distance, this.hearingRadius);
+        initialPan = calculatePan(initialLocalPos.x, initialRemotePos.x, this.hearingRadius);
+      }
+      if (this.masterMuted) {
+        initialGain = 0;
+      }
+
       const sourceNode = this.audioCtx.createMediaStreamSource(stream);
       const gainNode = this.audioCtx.createGain();
-      gainNode.gain.value = 0; // Starts silent until position is evaluated
+      gainNode.gain.value = initialGain;
 
       let pannerNode = null;
       if (this.audioCtx.createStereoPanner) {
         pannerNode = this.audioCtx.createStereoPanner();
-        pannerNode.pan.value = 0;
+        pannerNode.pan.value = initialPan;
       }
 
       // Analyser node for live voice visualizer / audio meter
@@ -122,12 +134,12 @@ export class SpatialAudioMixer {
         analyserNode,
         isObstructed: false,
         micMuted: false,
-        lastComputedGain: 0,
-        lastTargetGain: null,
-        lastTargetPan: null
+        lastComputedGain: initialGain,
+        lastTargetGain: initialGain,
+        lastTargetPan: initialPan
       });
 
-      console.log(`[SpatialAudio] Spatial pipeline initialized for peer: ${peerId}`);
+      console.log(`[SpatialAudio] Spatial pipeline initialized for peer: ${peerId} (initialGain: ${initialGain})`);
     } catch (err) {
       console.error(`[SpatialAudio] Error setting up audio pipeline for peer ${peerId}:`, err);
     }

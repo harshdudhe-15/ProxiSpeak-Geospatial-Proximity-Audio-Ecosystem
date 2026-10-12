@@ -53,7 +53,7 @@ describe('UI Component Unit Tests', () => {
     expect(screen.getByText('Leave')).toBeInTheDocument();
   });
 
-  it('LobbyModal renders display name input and enter office button', async () => {
+  it('LobbyModal renders display name input and enter headquarters button', () => {
     render(
       <LobbyModal
         onJoinOffice={() => {}}
@@ -64,8 +64,7 @@ describe('UI Component Unit Tests', () => {
 
     expect(screen.getByText('Welcome to ProxiSpeak')).toBeInTheDocument();
     expect(screen.getByLabelText(/Your Name/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Enter Office/i })).toBeInTheDocument();
-    // Await async offices loading to cleanly resolve state updates
-    await screen.findByText(/HQ Office/i);
+    expect(screen.getByRole('button', { name: /Enter ProxiSpeak Headquarters/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/ProxiSpeak Headquarters/i).length).toBeGreaterThanOrEqual(1);
   });
 });

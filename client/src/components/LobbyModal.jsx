@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Mic, ArrowRight, Building, Plus, Check } from 'lucide-react';
-import { fetchOffices, createOffice } from '../services/apiService.js';
+import React, { useState } from 'react';
+import { Mic, ArrowRight, Building, Check, Sparkles } from 'lucide-react';
 
 const AVATAR_COLORS = [
   '#6366f1', // Indigo
@@ -19,49 +18,9 @@ export function LobbyModal({ onJoinOffice, isJoining, errorMessage }) {
   const [selectedColor, setSelectedColor] = useState(
     localStorage.getItem('proxispeak_avatar_color') || AVATAR_COLORS[0]
   );
-  const [offices, setOffices] = useState([]);
-  const [selectedOfficeId, setSelectedOfficeId] = useState('');
-  const [isCreatingOffice, setIsCreatingOffice] = useState(false);
-  const [newOfficeName, setNewOfficeName] = useState('');
-  const [loadingOffices, setLoadingOffices] = useState(true);
   const [formError, setFormError] = useState('');
 
-  useEffect(() => {
-    async function loadOffices() {
-      try {
-        setLoadingOffices(true);
-        const list = await fetchOffices();
-        setOffices(list);
-        if (list.length > 0) {
-          setSelectedOfficeId(list[0]._id);
-        }
-      } catch (err) {
-        console.error('Error fetching offices:', err);
-      } finally {
-        setLoadingOffices(false);
-      }
-    }
-    loadOffices();
-  }, []);
-
-  const handleCreateNewOffice = async () => {
-    if (!newOfficeName.trim() || newOfficeName.trim().length < 2) {
-      setFormError('Office name must be at least 2 characters');
-      return;
-    }
-    try {
-      setFormError('');
-      const created = await createOffice({ name: newOfficeName.trim() });
-      setOffices(prev => [created, ...prev]);
-      setSelectedOfficeId(created._id);
-      setIsCreatingOffice(false);
-      setNewOfficeName('');
-    } catch (err) {
-      setFormError(err.message || 'Failed to create office');
-    }
-  };
-
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     setFormError('');
 
@@ -71,28 +30,8 @@ export function LobbyModal({ onJoinOffice, isJoining, errorMessage }) {
       return;
     }
 
-    let officeIdToJoin = selectedOfficeId;
-
-    if (isCreatingOffice && newOfficeName.trim()) {
-      if (newOfficeName.trim().length < 2) {
-        setFormError('Office name must be at least 2 characters');
-        return;
-      }
-      try {
-        const created = await createOffice({ name: newOfficeName.trim() });
-        setOffices(prev => [created, ...prev]);
-        officeIdToJoin = created._id;
-        setSelectedOfficeId(created._id);
-        setIsCreatingOffice(false);
-        setNewOfficeName('');
-      } catch (err) {
-        setFormError(err.message || 'Failed to create office');
-        return;
-      }
-    }
-
-    if (!officeIdToJoin) {
-      setFormError('Please select or create an office to join');
+    if (trimmedName.length > 32) {
+      setFormError('Display name must not exceed 32 characters');
       return;
     }
 
@@ -102,8 +41,7 @@ export function LobbyModal({ onJoinOffice, isJoining, errorMessage }) {
 
     onJoinOffice({
       displayName: trimmedName,
-      avatarColor: selectedColor,
-      officeId: officeIdToJoin
+      avatarColor: selectedColor
     });
   };
 
@@ -118,6 +56,60 @@ export function LobbyModal({ onJoinOffice, isJoining, errorMessage }) {
           <p className="lobby-subtitle">
             Walk up to colleagues in the virtual office to speak. Natural spatial voice audio powered by WebRTC.
           </p>
+        </div>
+
+        {/* Canonical Office Destination Banner */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 16px',
+            marginBottom: '20px',
+            background: 'rgba(99, 102, 241, 0.12)',
+            border: '1px solid rgba(99, 102, 241, 0.28)',
+            borderRadius: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                background: 'rgba(99, 102, 241, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Building size={18} color="#818cf8" />
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#818cf8', fontWeight: 600 }}>
+                Destination Office
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
+                ProxiSpeak Headquarters
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '11px',
+              color: '#34d399',
+              background: 'rgba(16, 185, 129, 0.15)',
+              padding: '4px 10px',
+              borderRadius: '999px',
+              fontWeight: 600
+            }}
+          >
+            <Sparkles size={12} />
+            <span>Shared HQ</span>
+          </div>
         </div>
 
         {(formError || errorMessage) && (
@@ -172,72 +164,6 @@ export function LobbyModal({ onJoinOffice, isJoining, errorMessage }) {
             </div>
           </div>
 
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <label className="form-label" style={{ marginBottom: 0 }}>
-                Select Virtual Office
-              </label>
-              <button
-                type="button"
-                onClick={() => setIsCreatingOffice(!isCreatingOffice)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#818cf8',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                {isCreatingOffice ? 'Select existing' : <><Plus size={14} /> New office</>}
-              </button>
-            </div>
-
-            {isCreatingOffice ? (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="New Office Name (e.g. Design Studio)"
-                  value={newOfficeName}
-                  onChange={(e) => setNewOfficeName(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={handleCreateNewOffice}
-                  className="dock-btn primary"
-                  style={{ borderRadius: '8px', padding: '0 16px', whiteSpace: 'nowrap' }}
-                >
-                  Create
-                </button>
-              </div>
-            ) : (
-              <select
-                id="office-select"
-                className="form-input"
-                value={selectedOfficeId}
-                onChange={(e) => setSelectedOfficeId(e.target.value)}
-                disabled={loadingOffices || offices.length === 0}
-                style={{ cursor: 'pointer' }}
-              >
-                {loadingOffices ? (
-                  <option value="">Loading offices...</option>
-                ) : offices.length === 0 ? (
-                  <option value="">No offices found</option>
-                ) : (
-                  offices.map(o => (
-                    <option key={o._id} value={o._id}>
-                      {o.name} ({o.width}x{o.height}px)
-                    </option>
-                  ))
-                )}
-              </select>
-            )}
-          </div>
-
           <button
             id="join-office-button"
             type="submit"
@@ -245,10 +171,10 @@ export function LobbyModal({ onJoinOffice, isJoining, errorMessage }) {
             disabled={isJoining}
           >
             {isJoining ? (
-              <span>Connecting to Office...</span>
+              <span>Connecting to Headquarters...</span>
             ) : (
               <>
-                <span>Enter Office</span>
+                <span>Enter ProxiSpeak Headquarters</span>
                 <ArrowRight size={18} />
               </>
             )}

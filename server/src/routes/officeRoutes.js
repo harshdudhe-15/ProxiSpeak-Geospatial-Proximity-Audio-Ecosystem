@@ -3,33 +3,38 @@ import { Office } from '../models/Office.js';
 import { DEFAULT_OFFICE_TEMPLATE } from '../config/constants.js';
 import { GeospatialService } from '../services/geospatialService.js';
 import { proximityEngine } from '../services/proximityEngine.js';
+import { getOrCreateHeadquartersOffice } from '../services/officeService.js';
 
 const router = express.Router();
 
 /**
+ * GET /api/offices/headquarters
+ * Returns the canonical ProxiSpeak Headquarters office layout.
+ */
+router.get('/headquarters', async (req, res, next) => {
+  try {
+    const hq = await getOrCreateHeadquartersOffice();
+    res.json({
+      success: true,
+      data: hq
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/offices
- * Returns list of all available offices. Auto-seeds default office if empty.
+ * Returns list of all available offices with canonical headquarters first.
  */
 router.get('/', async (req, res, next) => {
   try {
-    let offices = await Office.find().sort({ createdAt: -1 });
-
-    if (offices.length === 0) {
-      const defaultOffice = await Office.create({
-        name: DEFAULT_OFFICE_TEMPLATE.name,
-        code: 'hq-main',
-        width: DEFAULT_OFFICE_TEMPLATE.width,
-        height: DEFAULT_OFFICE_TEMPLATE.height,
-        zones: DEFAULT_OFFICE_TEMPLATE.zones,
-        furniture: DEFAULT_OFFICE_TEMPLATE.furniture,
-        walls: DEFAULT_OFFICE_TEMPLATE.walls
-      });
-      offices = [defaultOffice];
-    }
+    const hq = await getOrCreateHeadquartersOffice();
+    const otherOffices = await Office.find({ _id: { $ne: hq._id } }).sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      data: offices
+      data: [hq, ...otherOffices]
     });
   } catch (err) {
     next(err);

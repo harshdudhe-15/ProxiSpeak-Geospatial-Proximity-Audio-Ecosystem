@@ -16,19 +16,23 @@ export function CanvasOffice({
   const canvasRef = useRef(null);
 
   // Local state references for animation loop
-  const localPosRef = useRef({ x: currentUser?.x || 150, y: currentUser?.y || 150 });
+  const localPosRef = useRef({ x: currentUser?.x || 280, y: currentUser?.y || 140 });
   const remotePositionsRef = useRef(new Map()); // userId -> { currentX, currentY, targetX, targetY, displayName, avatarColor, micMuted }
   const activeKeysRef = useRef(new Set());
+  const targetClickPosRef = useRef(null);
   const lastEmitTimeRef = useRef(0);
 
-  // Sync initial position if currentUser coordinates become available
-  useEffect(() => {
-    if (currentUser?.x != null && currentUser?.y != null) {
-      if (localPosRef.current.x === 150 && localPosRef.current.y === 150) {
-        localPosRef.current = { x: currentUser.x, y: currentUser.y };
-      }
-    }
-  }, [currentUser?.userId]);
+  // Mutable refs to keep animation loop decoupled from React render churn
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+  const onLocalMoveRef = useRef(onLocalMove);
+  onLocalMoveRef.current = onLocalMove;
+  const officeLayoutRef = useRef(officeLayout);
+  officeLayoutRef.current = officeLayout;
+  const isMicMutedRef = useRef(isMicMuted);
+  isMicMutedRef.current = isMicMuted;
+  const hearingRadiusRef = useRef(hearingRadius);
+  hearingRadiusRef.current = hearingRadius;
 
   const officeWidth = officeLayout?.width || 1400;
   const officeHeight = officeLayout?.height || 900;
@@ -36,6 +40,17 @@ export function CanvasOffice({
     ...(officeLayout?.walls || []),
     ...(officeLayout?.furniture || [])
   ];
+  const obstaclesRef = useRef(obstacles);
+  obstaclesRef.current = obstacles;
+
+  // Sync initial position if currentUser coordinates become available
+  useEffect(() => {
+    if (currentUser?.x != null && currentUser?.y != null) {
+      if (localPosRef.current.x === 280 && localPosRef.current.y === 140) {
+        localPosRef.current = { x: currentUser.x, y: currentUser.y };
+      }
+    }
+  }, [currentUser?.userId]);
 
   // Sync remote user targets
   useEffect(() => {
@@ -72,12 +87,32 @@ export function CanvasOffice({
     }
   }, [remoteUsers]);
 
+  // Background interval (100ms) for continuous spatial audio parameter sync
+  // Ensures audio stays audible and properly panned even when the browser tab is unfocused/backgrounded
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const localPos = localPosRef.current;
+      const remoteMap = remotePositionsRef.current;
+      const curObstacles = obstaclesRef.current;
+      for (const [peerId, remote] of remoteMap.entries()) {
+        const remotePos = { x: remote.currentX, y: remote.currentY };
+        const isObstructed = curObstacles.some(obs =>
+          obs.soundBlocking && lineIntersectsRect(localPos, remotePos, obs)
+        );
+        spatialAudioMixer.updatePeerSpatial(peerId, localPos, remotePos, isObstructed);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Keyboard Event Listeners for WASD and Arrow Keys
   useEffect(() => {
     const handleKeyDown = (e) => {
       const key = e.key.toLowerCase();
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright'].includes(key)) {
         activeKeysRef.current.add(key);
+        targetClickPosRef.current = null; // Keyboard cancels click target
         // Prevent window scroll
         e.preventDefault();
       }
@@ -98,6 +133,20 @@ export function CanvasOffice({
     };
   }, []);
 
+  // Pointer / Click-to-move handler on canvas
+  const handlePointerDown = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = officeWidth / rect.width;
+    const scaleY = officeHeight / rect.height;
+    const clickX = (e.clientX - rect.left) * scaleX;
+    const clickY = (e.clientY - rect.top) * scaleY;
+    const clampedX = Math.max(AVATAR_RADIUS, Math.min(officeWidth - AVATAR_RADIUS, clickX));
+    const clampedY = Math.max(AVATAR_RADIUS, Math.min(officeHeight - AVATAR_RADIUS, clickY));
+    targetClickPosRef.current = { x: clampedX, y: clampedY };
+  };
+
   // Main Canvas Render & Movement Animation Loop
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -113,11 +162,12 @@ export function CanvasOffice({
       const dt = Math.min(0.1, (now - lastFrameTime) / 1000);
       lastFrameTime = now;
 
-      // 1. Calculate local movement from keys
+      const keys = activeKeysRef.current;
+      const curObstacles = obstaclesRef.current;
       let dx = 0;
       let dy = 0;
-      const keys = activeKeysRef.current;
 
+      // 1. Calculate local movement from keys
       if (keys.has('w') || keys.has('arrowup')) dy -= 1;
       if (keys.has('s') || keys.has('arrowdown')) dy += 1;
       if (keys.has('a') || keys.has('arrowleft')) dx -= 1;
@@ -127,6 +177,17 @@ export function CanvasOffice({
         // Normalize diagonal speed
         dx *= 0.7071;
         dy *= 0.7071;
+      } else if (dx === 0 && dy === 0 && targetClickPosRef.current) {
+        // 1b. Fallback to click-to-move target
+        const target = targetClickPosRef.current;
+        const currentPos = localPosRef.current;
+        const dist = Math.hypot(target.x - currentPos.x, target.y - currentPos.y);
+        if (dist > 4) {
+          dx = (target.x - currentPos.x) / dist;
+          dy = (target.y - currentPos.y) / dist;
+        } else {
+          targetClickPosRef.current = null;
+        }
       }
 
       if (dx !== 0 || dy !== 0) {
@@ -135,24 +196,20 @@ export function CanvasOffice({
         const proposedX = currentPos.x + dx * moveDist;
         const proposedY = currentPos.y + dy * moveDist;
 
-        // Wall & obstacle collision check
-        let nextX = proposedX;
-        let nextY = proposedY;
-
         // Clamp to boundaries
-        nextX = Math.max(AVATAR_RADIUS, Math.min(officeWidth - AVATAR_RADIUS, nextX));
-        nextY = Math.max(AVATAR_RADIUS, Math.min(officeHeight - AVATAR_RADIUS, nextY));
+        let nextX = Math.max(AVATAR_RADIUS, Math.min(officeWidth - AVATAR_RADIUS, proposedX));
+        let nextY = Math.max(AVATAR_RADIUS, Math.min(officeHeight - AVATAR_RADIUS, proposedY));
 
-        // Slide check along X
-        const collidesFull = obstacles.some(obs =>
+        // Wall & obstacle collision check
+        const collidesFull = curObstacles.some(obs =>
           circleCollidesWithRect({ x: nextX, y: nextY, radius: AVATAR_RADIUS }, obs)
         );
 
         if (collidesFull) {
-          const collidesXOnly = obstacles.some(obs =>
+          const collidesXOnly = curObstacles.some(obs =>
             circleCollidesWithRect({ x: nextX, y: currentPos.y, radius: AVATAR_RADIUS }, obs)
           );
-          const collidesYOnly = obstacles.some(obs =>
+          const collidesYOnly = curObstacles.some(obs =>
             circleCollidesWithRect({ x: currentPos.x, y: nextY, radius: AVATAR_RADIUS }, obs)
           );
 
@@ -161,8 +218,19 @@ export function CanvasOffice({
           } else if (!collidesYOnly) {
             nextX = currentPos.x;
           } else {
-            nextX = currentPos.x;
-            nextY = currentPos.y;
+            // Check if current position itself is already colliding with an obstacle
+            const currentColliding = curObstacles.some(obs =>
+              circleCollidesWithRect({ x: currentPos.x, y: currentPos.y, radius: AVATAR_RADIUS }, obs)
+            );
+            if (currentColliding) {
+              // Allow escape movement so avatar is never trapped
+              nextX = proposedX;
+              nextY = proposedY;
+            } else {
+              nextX = currentPos.x;
+              nextY = currentPos.y;
+              targetClickPosRef.current = null;
+            }
           }
         }
 
@@ -171,7 +239,9 @@ export function CanvasOffice({
         // Throttle network broadcast to ~20Hz (50ms interval)
         if (now - lastEmitTimeRef.current >= 50) {
           lastEmitTimeRef.current = now;
-          onLocalMove(Math.round(nextX), Math.round(nextY));
+          if (onLocalMoveRef.current) {
+            onLocalMoveRef.current(Math.round(nextX), Math.round(nextY));
+          }
         }
       }
 
@@ -186,7 +256,7 @@ export function CanvasOffice({
 
         // Check line-of-sight sound blocking with obstacles
         const remotePos = { x: remote.currentX, y: remote.currentY };
-        const isObstructed = obstacles.some(obs =>
+        const isObstructed = curObstacles.some(obs =>
           obs.soundBlocking && lineIntersectsRect(localPos, remotePos, obs)
         );
 
@@ -195,7 +265,16 @@ export function CanvasOffice({
       }
 
       // 3. Clear and draw Canvas
-      drawScene(ctx, canvas, localPos, remoteMap, officeLayout, hearingRadius, isMicMuted, currentUser);
+      drawScene(
+        ctx,
+        canvas,
+        localPos,
+        remoteMap,
+        officeLayoutRef.current,
+        hearingRadiusRef.current,
+        isMicMutedRef.current,
+        currentUserRef.current
+      );
 
       animationFrameId = requestAnimationFrame(renderLoop);
     };
@@ -205,7 +284,7 @@ export function CanvasOffice({
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [officeWidth, officeHeight, officeLayout, hearingRadius, obstacles, onLocalMove, isMicMuted, currentUser]);
+  }, [officeWidth, officeHeight]);
 
   // Canvas size and retina DPI handling
   useEffect(() => {
@@ -227,7 +306,7 @@ export function CanvasOffice({
       <div className="canvas-hud-overlay">
         <div className="hud-chip">
           <span>Movement:</span>
-          <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>Arrow Keys</kbd>
+          <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, <kbd>Arrow Keys</kbd>, or <kbd>Click Map</kbd>
         </div>
         <div className="hud-chip">
           <span>Hearing Range:</span>
@@ -239,6 +318,7 @@ export function CanvasOffice({
         ref={canvasRef}
         className="office-canvas"
         tabIndex={0}
+        onPointerDown={handlePointerDown}
       />
     </div>
   );

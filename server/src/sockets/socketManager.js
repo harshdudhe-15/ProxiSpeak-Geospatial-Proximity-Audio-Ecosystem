@@ -5,6 +5,7 @@ import { GeospatialService } from '../services/geospatialService.js';
 import { validateCoordinates, validateSignalingPayload } from '../middleware/validation.js';
 import { getIceServers } from '../config/rtcConfig.js';
 import { Office } from '../models/Office.js';
+import { getOrCreateHeadquartersOffice } from '../services/officeService.js';
 
 /**
  * Socket.IO Manager: Handles real-time signaling, office rooms,
@@ -30,16 +31,32 @@ export function initializeSocketManager(io) {
       try {
         const { officeId, userId, displayName, avatarColor, avatarIcon, x, y } = data || {};
 
-        if (!officeId || !userId || !displayName) {
+        if (!userId || !displayName) {
           return socket.emit(SOCKET_EVENTS.SERVER_ERROR, {
             code: 'INVALID_JOIN_PAYLOAD',
-            message: 'officeId, userId, and displayName are required.'
+            message: 'userId and displayName are required.'
           });
         }
 
+        // Fetch canonical office layout (defaulting to canonical ProxiSpeak Headquarters)
+        let office = null;
+        if (officeId && officeId !== 'hq-main' && officeId !== 'default') {
+          try {
+            office = await Office.findById(officeId).lean();
+          } catch {
+            office = await Office.findOne({ code: officeId }).lean();
+          }
+        }
+        if (!office) {
+          office = await getOrCreateHeadquartersOffice();
+          if (office && office.toObject) office = office.toObject();
+        }
+
+        const canonicalOfficeId = String(office._id || office.code || 'hq-main');
+
         // Attach verified identity to socket session
         socket.data.userId = String(userId);
-        socket.data.officeId = String(officeId);
+        socket.data.officeId = canonicalOfficeId;
         socket.data.displayName = String(displayName).trim();
         socket.data.avatarColor = avatarColor || '#6366f1';
         socket.data.avatarIcon = avatarIcon || 'user';
@@ -49,15 +66,6 @@ export function initializeSocketManager(io) {
 
         const roomName = `office:${socket.data.officeId}`;
         await socket.join(roomName);
-
-        // Fetch office layout from DB or use fallback
-        let office = null;
-        try {
-          office = await Office.findById(officeId).lean();
-        } catch {
-          // In case officeId is custom or non-ObjectId
-          office = await Office.findOne({ code: officeId }).lean();
-        }
 
         const officeWidth = office?.width || 1400;
         const officeHeight = office?.height || 900;
@@ -70,12 +78,13 @@ export function initializeSocketManager(io) {
         proximityEngine.setOfficeObstacles(socket.data.officeId, obstacles);
         officeDimensionsMap.set(socket.data.officeId, { width: officeWidth, height: officeHeight });
 
-        // Clamped initial coordinates
-        const initialPos = CollisionService.clampToBounds(
-          { x: Number(x) || 120, y: Number(y) || 120 },
-          officeWidth,
-          officeHeight
-        );
+        // Safe initial coordinates: default to clear floor lane in Welcome Lounge (280, 140)
+        let initialPos = { x: Number(x) || 280, y: Number(y) || 140 };
+        // If proposed initial position collides with any obstacle, fallback to open lane
+        if (CollisionService.isColliding(initialPos, obstacles, 20)) {
+          initialPos = { x: 280, y: 140 };
+        }
+        initialPos = CollisionService.clampToBounds(initialPos, officeWidth, officeHeight);
 
         // Add user to proximity engine
         const proximityResult = proximityEngine.addUser(socket.data.officeId, {
@@ -88,6 +97,7 @@ export function initializeSocketManager(io) {
           y: initialPos.y,
           micMuted: false
         });
+
 
         // Current office state for newcomer
         const officeUsers = proximityEngine.getOfficeUsers(socket.data.officeId);
@@ -153,7 +163,7 @@ export function initializeSocketManager(io) {
           socket.data.displayName,
           initialPos.x,
           initialPos.y
-        );
+        )
       } catch (err) {
         console.error('[Socket] Error in office:join:', err);
         socket.emit(SOCKET_EVENTS.SERVER_ERROR, {
@@ -168,10 +178,11 @@ export function initializeSocketManager(io) {
      */
     socket.on(SOCKET_EVENTS.USER_MOVE, (data) => {
       try {
-        const { officeId, x, y } = data || {};
+        const { x, y } = data || {};
         const userId = socket.data.userId;
+        const officeId = socket.data.officeId;
 
-        if (!userId || !socket.data.officeId || socket.data.officeId !== officeId) {
+        if (!userId || !officeId) {
           return;
         }
 

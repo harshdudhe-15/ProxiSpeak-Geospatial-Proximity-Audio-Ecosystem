@@ -324,15 +324,16 @@ To test spatial proximity audio with two users:
 1. **Window 1 (User 1)**:
    - Open Chrome at `http://localhost:5173/`.
    - Enter name: `Alice` (Pick Indigo theme).
-   - Click **Enter Office**.
+   - Click **Enter ProxiSpeak Headquarters** (automatically enters the shared canonical office).
    - Grant microphone permissions when prompted.
 2. **Window 2 (User 2 - Incognito or Secondary Browser)**:
    - Open Incognito / Edge at `http://localhost:5173/`.
    - Enter name: `Bob` (Pick Emerald theme).
-   - Click **Enter Office**.
+   - Click **Enter ProxiSpeak Headquarters** (automatically joins Alice in ProxiSpeak Headquarters).
    - Grant microphone permissions when prompted.
-3. **Verify Proximity Audio**:
-   - Move Alice towards Bob using `W`, `A`, `S`, `D`.
+3. **Verify Presence & Proximity Audio**:
+   - Both browser windows immediately show two visible avatars in the Welcome Lounge: Alice and Bob.
+   - Move Alice towards Bob using `W`, `A`, `S`, `D`, arrow keys, or clicking the map.
    - When within **120px**, you will see:
      - A cyan dashed link ray connecting the avatars.
      - The Participant Roster displays `In Earshot` with live pixel distance.
@@ -389,7 +390,7 @@ To test spatial proximity audio with two users:
 ✓ src/test/components.test.jsx
   - HeaderBar renders brand title and online user count
   - ControlDock renders mic mute, deafen, and leave buttons
-  - LobbyModal renders display name input and enter office button
+  - LobbyModal renders display name input and enter headquarters button
 ✓ src/test/webrtcAudio.test.js
   - preserves early ICE candidates when received before getOrCreatePeer is invoked
   - delivers remote track via fallback MediaStream when event.streams is empty
