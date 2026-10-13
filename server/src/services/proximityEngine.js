@@ -11,12 +11,16 @@ export class ProximityEngine {
     this.hearingRadius = options.hearingRadius || DEFAULT_HEARING_RADIUS;
     this.exitGrace = options.exitGrace || DEFAULT_EXIT_GRACE;
     this.exitRadius = this.hearingRadius + this.exitGrace;
+    this.prewarmRadius = options.prewarmRadius || (this.hearingRadius + 40);
 
     // officeId -> Map<userId, { userId, socketId, displayName, avatarColor, avatarIcon, x, y, micMuted, lastMoveTime }>
     this.officeUsers = new Map();
 
     // officeId -> Set<string> canonical pair keys: "userIdA:userIdB" (where userIdA < userIdB)
     this.activePairs = new Map();
+
+    // officeId -> Set<string> prewarmed pair keys approaching earshot
+    this.prewarmPairs = new Map();
 
     // officeId -> Array<obstacle> (sound blocking walls/furniture)
     this.officeObstacles = new Map();
@@ -43,6 +47,7 @@ export class ProximityEngine {
     if (!this.officeUsers.has(officeId)) {
       this.officeUsers.set(officeId, new Map());
       this.activePairs.set(officeId, new Set());
+      this.prewarmPairs.set(officeId, new Set());
     }
 
     const usersMap = this.officeUsers.get(officeId);
@@ -64,6 +69,7 @@ export class ProximityEngine {
   removeUser(officeId, userId) {
     const usersMap = this.officeUsers.get(officeId);
     const pairsSet = this.activePairs.get(officeId);
+    const prewarmSet = this.prewarmPairs.get(officeId);
     const departedPeers = [];
 
     if (!usersMap || !usersMap.has(userId)) {
@@ -83,9 +89,19 @@ export class ProximityEngine {
       }
     }
 
+    if (prewarmSet) {
+      for (const pairKey of Array.from(prewarmSet)) {
+        const [u1, u2] = pairKey.split(':');
+        if (u1 === userId || u2 === userId) {
+          prewarmSet.delete(pairKey);
+        }
+      }
+    }
+
     if (usersMap.size === 0) {
       this.officeUsers.delete(officeId);
       this.activePairs.delete(officeId);
+      this.prewarmPairs.delete(officeId);
       this.officeObstacles.delete(officeId);
     }
 
@@ -134,15 +150,17 @@ export class ProximityEngine {
   evaluateUserProximity(officeId, userId) {
     const usersMap = this.officeUsers.get(officeId);
     const pairsSet = this.activePairs.get(officeId);
+    const prewarmSet = this.prewarmPairs.get(officeId);
 
     if (!usersMap || !pairsSet || !usersMap.has(userId)) {
-      return { enteredPairs: [], leftPairs: [], currentNeighbors: [] };
+      return { enteredPairs: [], leftPairs: [], currentNeighbors: [], prewarmPairs: [] };
     }
 
     const targetUser = usersMap.get(userId);
     const enteredPairs = [];
     const leftPairs = [];
     const currentNeighbors = [];
+    const prewarmPairs = [];
 
     for (const [otherId, otherUser] of usersMap.entries()) {
       if (otherId === userId) continue;
@@ -180,6 +198,7 @@ export class ProximityEngine {
         // Enter check: enter if within hearingRadius
         if (dist <= this.hearingRadius) {
           pairsSet.add(pairKey);
+          if (prewarmSet) prewarmSet.delete(pairKey);
           enteredPairs.push({
             peerA: userId,
             peerB: otherId,
@@ -193,11 +212,25 @@ export class ProximityEngine {
             distance: dist,
             isObstructed: obstructed
           });
+        } else if (dist <= this.prewarmRadius) {
+          // Bounded prewarm zone: user is approaching earshot
+          if (prewarmSet && !prewarmSet.has(pairKey)) {
+            prewarmSet.add(pairKey);
+            prewarmPairs.push({
+              peerA: userId,
+              peerB: otherId,
+              distance: dist,
+              isObstructed: obstructed,
+              initiatorId: userId < otherId ? userId : otherId
+            });
+          }
+        } else if (prewarmSet && prewarmSet.has(pairKey) && dist > this.prewarmRadius + this.exitGrace) {
+          prewarmSet.delete(pairKey);
         }
       }
     }
 
-    return { enteredPairs, leftPairs, currentNeighbors };
+    return { enteredPairs, leftPairs, currentNeighbors, prewarmPairs };
   }
 
   /**

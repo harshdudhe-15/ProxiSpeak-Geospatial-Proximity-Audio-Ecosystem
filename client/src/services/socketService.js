@@ -71,7 +71,7 @@ export class SocketService {
     });
 
     this.socket.on('user:left', (data) => {
-      webRtcService.closePeer(data.userId);
+      webRtcService.closePeer(data.userId, { immediate: true });
       this.emitInternal('user:left', data);
     });
 
@@ -81,9 +81,17 @@ export class SocketService {
     });
 
     // Proximity triggers
+    this.socket.on('proximity:prewarm', (data) => {
+      const { peerId, shouldInitiateOffer } = data;
+      webRtcService.prewarmPeer(peerId, this.socket, shouldInitiateOffer);
+      this.emitInternal('proximity:prewarm', data);
+    });
+
     this.socket.on('proximity:entered', (data) => {
       const { peerId, shouldInitiateOffer, isObstructed } = data;
-      // console.log(`[Proximity] Entered earshot of peer: ${peerId}, initiateOffer: ${shouldInitiateOffer}`);
+      const timeline = webRtcService.getOrCreateTimeline(peerId, shouldInitiateOffer);
+      timeline.record('proximityDetected');
+
       this.emitInternal('proximity:entered', data);
 
       if (shouldInitiateOffer) {
@@ -93,8 +101,7 @@ export class SocketService {
 
     this.socket.on('proximity:left', (data) => {
       const { peerId } = data;
-      // console.log(`[Proximity] Left earshot of peer: ${peerId}`);
-      webRtcService.closePeer(peerId);
+      webRtcService.closePeer(peerId, { immediate: false });
       this.emitInternal('proximity:left', data);
     });
 

@@ -27,6 +27,7 @@ export const SOCKET_EVENTS = {
   USER_LEFT: 'user:left',
   PROXIMITY_ENTERED: 'proximity:entered',
   PROXIMITY_LEFT: 'proximity:left',
+  PROXIMITY_PREWARM: 'proximity:prewarm',
   AUDIO_STATE_CHANGED: 'audio:state-changed',
   SERVER_ERROR: 'server:error',
 };

@@ -14,6 +14,18 @@ export class SpatialAudioMixer {
     this.masterMuted = false;
     this.isAutoplayBlocked = false;
     this.autoplayListeners = new Set();
+    this.playbackStartListeners = new Set();
+    this.audibleListeners = new Set();
+  }
+
+  onPlaybackStart(cb) {
+    this.playbackStartListeners.add(cb);
+    return () => this.playbackStartListeners.delete(cb);
+  }
+
+  onAudibleChange(cb) {
+    this.audibleListeners.add(cb);
+    return () => this.audibleListeners.delete(cb);
   }
 
   onAutoplayBlockedChange(cb) {
@@ -215,6 +227,11 @@ export class SpatialAudioMixer {
         lastTargetPan: initialPan
       });
 
+      // Notify that remote audio playback pipeline is initialized
+      for (const cb of this.playbackStartListeners) {
+        cb(peerId);
+      }
+
       console.log(`[SpatialAudio] Spatial pipeline initialized for peer: ${peerId} (initialGain: ${initialGain})`);
     } catch (err) {
       console.error(`[SpatialAudio] Error setting up audio pipeline for peer ${peerId}:`, err);
@@ -261,6 +278,12 @@ export class SpatialAudioMixer {
       if (nodeGroup.lastTargetPan == null || Math.abs(nodeGroup.lastTargetPan - targetPan) > 0.005) {
         nodeGroup.lastTargetPan = targetPan;
         nodeGroup.pannerNode.pan.setTargetAtTime(targetPan, now, timeConstant);
+      }
+    }
+
+    if (targetGain > 0 && this.audioCtx && this.audioCtx.state === 'running') {
+      for (const cb of this.audibleListeners) {
+        cb(peerId, targetGain);
       }
     }
   }

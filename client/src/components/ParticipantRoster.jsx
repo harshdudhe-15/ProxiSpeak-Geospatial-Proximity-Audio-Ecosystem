@@ -98,14 +98,20 @@ export function ParticipantRoster({
 
             let proximityLabel;
             const connState = webRtcService.getConnectionState(user.userId);
+            const milestone = webRtcService.getPeerMilestone ? webRtcService.getPeerMilestone(user.userId) : 'idle';
+            const lifecycle = webRtcService.getLifecycleState ? webRtcService.getLifecycleState(user.userId) : 'idle';
             const isAudible = spatialAudioMixer.isPeerAudible(user.userId);
 
             if (inRange) {
-              if (connState === 'connected' && isAudible) {
+              if (isAudible || milestone === 'audio-audible') {
                 proximityLabel = `${distance}px • Audio Live`;
-              } else if (connState === 'connected') {
-                proximityLabel = `${distance}px • Connected`;
-              } else if (connState === 'connecting') {
+              } else if (milestone === 'playback-ready') {
+                proximityLabel = `${distance}px • Playback Enabled`;
+              } else if (milestone === 'track-received') {
+                proximityLabel = `${distance}px • Track Received`;
+              } else if (connState === 'connected' || milestone === 'peer-connected') {
+                proximityLabel = `${distance}px • Peer Connected`;
+              } else if (connState === 'connecting' || lifecycle === 'connecting') {
                 proximityLabel = `${distance}px • Connecting...`;
               } else if (connState === 'failed' || connState === 'disconnected') {
                 proximityLabel = `${distance}px • Reconnecting...`;
@@ -113,7 +119,11 @@ export function ParticipantRoster({
                 proximityLabel = `${distance}px • In Earshot`;
               }
             } else {
-              proximityLabel = `${distance}px • Out of range`;
+              if (lifecycle === 'dormant') {
+                proximityLabel = `${distance}px • Dormant (Cached)`;
+              } else {
+                proximityLabel = `${distance}px • Out of range`;
+              }
             }
 
             return (

@@ -163,6 +163,26 @@ export function initializeSocketManager(io) {
               });
             }
           }
+        } else if (proximityResult.prewarmPairs && proximityResult.prewarmPairs.length > 0) {
+          for (const pair of proximityResult.prewarmPairs) {
+            const socketAId = userSocketMap.get(pair.peerA);
+            const socketBId = userSocketMap.get(pair.peerB);
+
+            if (socketAId) {
+              io.to(socketAId).emit(SOCKET_EVENTS.PROXIMITY_PREWARM, {
+                peerId: pair.peerB,
+                distance: pair.distance,
+                shouldInitiateOffer: pair.initiatorId === pair.peerA
+              });
+            }
+            if (socketBId) {
+              io.to(socketBId).emit(SOCKET_EVENTS.PROXIMITY_PREWARM, {
+                peerId: pair.peerA,
+                distance: pair.distance,
+                shouldInitiateOffer: pair.initiatorId === pair.peerB
+              });
+            }
+          }
         }
 
         // Record initial position snapshot asynchronously
@@ -216,7 +236,7 @@ export function initializeSocketManager(io) {
         );
 
         // Update in-memory proximity engine
-        const { enteredPairs, leftPairs } = proximityEngine.updatePosition(
+        const { enteredPairs, leftPairs, prewarmPairs } = proximityEngine.updatePosition(
           officeId,
           userId,
           resolvedPos.x,
@@ -251,6 +271,29 @@ export function initializeSocketManager(io) {
               isObstructed: pair.isObstructed,
               shouldInitiateOffer: pair.initiatorId === pair.peerB
             });
+          }
+        }
+
+        // Handle prewarm pairs for approaching users
+        if (prewarmPairs && prewarmPairs.length > 0) {
+          for (const pair of prewarmPairs) {
+            const socketAId = userSocketMap.get(pair.peerA);
+            const socketBId = userSocketMap.get(pair.peerB);
+
+            if (socketAId) {
+              io.to(socketAId).emit(SOCKET_EVENTS.PROXIMITY_PREWARM, {
+                peerId: pair.peerB,
+                distance: pair.distance,
+                shouldInitiateOffer: pair.initiatorId === pair.peerA
+              });
+            }
+            if (socketBId) {
+              io.to(socketBId).emit(SOCKET_EVENTS.PROXIMITY_PREWARM, {
+                peerId: pair.peerA,
+                distance: pair.distance,
+                shouldInitiateOffer: pair.initiatorId === pair.peerB
+              });
+            }
           }
         }
 

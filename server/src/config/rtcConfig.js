@@ -3,7 +3,8 @@
  */
 
 export function getIceServers() {
-  const stunServersRaw = process.env.RTC_STUN_SERVERS || 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302';
+  const stunServersRaw = process.env.RTC_STUN_SERVERS || 
+    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302,stun:stun.cloudflare.com:3478';
   const iceServers = stunServersRaw
     .split(',')
     .map(url => url.trim())
