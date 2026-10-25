@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mic, ArrowRight, Building, Check, Sparkles } from 'lucide-react';
+import { Mic, ArrowRight, ArrowLeft, Building, Check, Sparkles } from 'lucide-react';
 
 const AVATAR_COLORS = [
   '#6366f1', // Indigo
@@ -11,7 +11,7 @@ const AVATAR_COLORS = [
   '#ec4899', // Pink
 ];
 
-export function LobbyModal({ onJoinOffice, isJoining, errorMessage }) {
+export function LobbyModal({ onJoinOffice, isJoining, errorMessage, onBackToHome }) {
   const [displayName, setDisplayName] = useState(
     localStorage.getItem('proxispeak_display_name') || ''
   );
@@ -48,6 +48,30 @@ export function LobbyModal({ onJoinOffice, isJoining, errorMessage }) {
   return (
     <div className="modal-backdrop">
       <div className="lobby-card">
+        {onBackToHome && (
+          <button
+            type="button"
+            onClick={onBackToHome}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'none',
+              border: 'none',
+              color: '#94a3b8',
+              fontSize: '13px',
+              cursor: 'pointer',
+              padding: '2px 0 14px 0',
+              fontWeight: 500,
+              transition: 'color 150ms ease'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#ffffff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+          >
+            <ArrowLeft size={16} />
+            <span>&larr; Back to Homepage</span>
+          </button>
+        )}
         <div className="lobby-header">
           <div className="lobby-brand-icon">
             <Mic size={28} color="white" />

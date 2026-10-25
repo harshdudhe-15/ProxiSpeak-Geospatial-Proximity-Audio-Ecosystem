@@ -5,13 +5,28 @@ import { CanvasOffice } from './components/CanvasOffice.jsx';
 import { ControlDock } from './components/ControlDock.jsx';
 import { ParticipantRoster } from './components/ParticipantRoster.jsx';
 import { AudioStatusToast } from './components/AudioStatusToast.jsx';
+import { HomePage } from './components/HomePage.jsx';
 
 import { socketService } from './services/socketService.js';
 import { webRtcService } from './services/webRtcService.js';
 import { spatialAudioMixer } from './services/spatialAudioMixer.js';
 import { createSession } from './services/apiService.js';
 
+const normalizePath = (pathname) => {
+  if (!pathname || pathname === '/' || pathname === '') return 'home';
+  if (pathname.startsWith('/login') || pathname.startsWith('/join') || pathname.startsWith('/lobby')) return 'login';
+  if (pathname.startsWith('/office')) return 'office';
+  return 'home';
+};
+
 export function App() {
+  const [currentRoute, setCurrentRoute] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return normalizePath(window.location.pathname);
+    }
+    return 'home';
+  });
+
   const [joined, setJoined] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -25,6 +40,34 @@ export function App() {
   const [isRosterOpen, setIsRosterOpen] = useState(true);
   const [statusToast, setStatusToast] = useState(null);
   const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
+
+  // Seamless client-side history navigation
+  const navigateTo = useCallback((path, replace = false) => {
+    if (typeof window !== 'undefined') {
+      if (replace) {
+        window.history.replaceState({}, '', path);
+      } else {
+        window.history.pushState({}, '', path);
+      }
+    }
+    setCurrentRoute(normalizePath(path));
+  }, []);
+
+  // Listen for browser popstate (back / forward buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentRoute(normalizePath(window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Redirect to login if unauthenticated visitor directly attempts to open /office
+  useEffect(() => {
+    if (currentRoute === 'office' && !joined && !isJoining) {
+      navigateTo('/login', true);
+    }
+  }, [currentRoute, joined, isJoining, navigateTo]);
 
   // Setup WebRTC and Socket listeners
   useEffect(() => {
@@ -53,6 +96,7 @@ export function App() {
       }
       setIsJoining(false);
       setJoined(true);
+      navigateTo('/office', true);
     });
 
     const unsubUserJoined = socketService.on('user:joined', (user) => {
@@ -94,7 +138,7 @@ export function App() {
       unsubAudioChanged();
       unsubError();
     };
-  }, []);
+  }, [navigateTo]);
 
   // Auto-resume AudioContext on user interaction gestures
   useEffect(() => {
@@ -159,6 +203,7 @@ export function App() {
     setCurrentUser(null);
     setCurrentOffice(null);
     setRemoteUsers([]);
+    navigateTo('/', true);
   };
 
   // Microphone Mute Toggle
@@ -166,7 +211,8 @@ export function App() {
     const nextState = !isMicMuted;
     webRtcService.setMicMuted(nextState);
     if (currentOffice && currentUser) {
-      socketService.sendAudioState(currentOffice._id || currentOffice.code, nextState);
+      const officeId = currentOffice._id || currentOffice.code;
+      socketService.sendAudioState(officeId, nextState);
     }
   };
 
@@ -192,6 +238,23 @@ export function App() {
     }
   }, [currentOffice]);
 
+  // Render Homepage when on root '/'
+  if (currentRoute === 'home') {
+    return (
+      <HomePage
+        onEnterOffice={() => {
+          if (joined) {
+            navigateTo('/office');
+          } else {
+            navigateTo('/login');
+          }
+        }}
+        isJoined={joined}
+      />
+    );
+  }
+
+  // Render Login Lobby or Active Virtual Office
   return (
     <div className="app-container">
       {isAutoplayBlocked && (
@@ -241,6 +304,7 @@ export function App() {
           onJoinOffice={handleJoinOffice}
           isJoining={isJoining}
           errorMessage={statusToast?.message}
+          onBackToHome={() => navigateTo('/')}
         />
       )}
 
