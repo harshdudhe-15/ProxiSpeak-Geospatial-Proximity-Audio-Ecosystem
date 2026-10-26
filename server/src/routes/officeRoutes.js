@@ -3,7 +3,7 @@ import { Office } from '../models/Office.js';
 import { DEFAULT_OFFICE_TEMPLATE } from '../config/constants.js';
 import { GeospatialService } from '../services/geospatialService.js';
 import { proximityEngine } from '../services/proximityEngine.js';
-import { getOrCreateHeadquartersOffice } from '../services/officeService.js';
+import { getOrCreateHeadquartersOffice, updateHeadquartersCache, HEADQUARTERS_CODE } from '../services/officeService.js';
 
 const router = express.Router();
 
@@ -164,6 +164,11 @@ router.put('/:id/layout', async (req, res, next) => {
         success: false,
         error: { message: 'Office not found' }
       });
+    }
+
+    // Refresh in-memory cache if headquarters was updated
+    if (updatedOffice.code === HEADQUARTERS_CODE || updatedOffice.name === 'ProxiSpeak Headquarters') {
+      updateHeadquartersCache(updatedOffice);
     }
 
     // Refresh proximity engine obstacles in-memory

@@ -2,7 +2,8 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
-import { connectDB, disconnectDB } from '../src/config/db.js';
+import { connectDB, disconnectDB, maskMongoUri } from '../src/config/db.js';
+import { getOrCreateHeadquartersOffice, getCachedHeadquarters } from '../src/services/officeService.js';
 import { Office } from '../src/models/Office.js';
 import { PositionSnapshot } from '../src/models/PositionSnapshot.js';
 
@@ -21,10 +22,18 @@ describe('REST API & Geospatial Integration Tests', () => {
     await disconnectDB();
   });
 
-  test('GET /health returns healthy status', async () => {
+  test('GET /health returns healthy status and database connection details', async () => {
     const res = await request(app).get('/health');
     assert.equal(res.status, 200);
     assert.equal(res.body.status, 'healthy');
+    assert.equal(res.body.database, 'connected');
+  });
+
+  test('GET /api/warmup returns readiness and database status for frontend pre-warming', async () => {
+    const res = await request(app).get('/api/warmup');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.database, 'connected');
   });
 
   test('GET /api/offices auto-seeds default office if empty', async () => {
@@ -90,5 +99,29 @@ describe('REST API & Geospatial Integration Tests', () => {
     assert(userIds.includes('user-alice'));
     assert(userIds.includes('user-bob'));
     assert(!userIds.includes('user-charlie'));
+  });
+
+  test('Security: maskMongoUri redacts credentials from logs', () => {
+    const rawAtlas = 'mongodb+srv://admin_user:SuperSecretPassword123@cluster0.mongodb.net/proxispeak?retryWrites=true';
+    const masked = maskMongoUri(rawAtlas);
+    assert(!masked.includes('SuperSecretPassword123'));
+    assert(!masked.includes('admin_user'));
+    assert.equal(masked, 'mongodb+srv://***:***@cluster0.mongodb.net/proxispeak?retryWrites=true');
+
+    const standardUri = 'mongodb://user:pass@127.0.0.1:27017/proxispeak';
+    assert.equal(maskMongoUri(standardUri), 'mongodb://***:***@127.0.0.1:27017/proxispeak');
+  });
+
+  test('Headquarters in-memory cache returns office layout with zero database round-trip', async () => {
+    const hq = await getOrCreateHeadquartersOffice();
+    assert.equal(hq.name, 'ProxiSpeak Headquarters');
+
+    const cached = getCachedHeadquarters();
+    assert.ok(cached);
+    assert.equal(cached.name, 'ProxiSpeak Headquarters');
+
+    // Repeated call returns identical cached reference in 0ms
+    const repeated = await getOrCreateHeadquartersOffice();
+    assert.equal(repeated, cached);
   });
 });

@@ -3,6 +3,8 @@ import cors from 'cors';
 import officeRoutes from './routes/officeRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { getDatabaseStatus } from './config/db.js';
+import { getCachedHeadquarters } from './services/officeService.js';
 
 export function createApp() {
   const app = express();
@@ -18,9 +20,26 @@ export function createApp() {
 
   // Health and Diagnostic check
   app.get('/health', (req, res) => {
+    const dbStatus = getDatabaseStatus();
     res.json({
       status: 'healthy',
       service: 'ProxiSpeak API & Signaling Engine',
+      database: dbStatus.connected ? 'connected' : 'disconnected',
+      databaseDetails: dbStatus,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  // Dedicated lightweight preflight/warmup route for early frontend preloading
+  app.get('/api/warmup', (req, res) => {
+    const dbStatus = getDatabaseStatus();
+    const hq = getCachedHeadquarters();
+    res.json({
+      success: true,
+      ready: dbStatus.connected && Boolean(hq),
+      service: 'ProxiSpeak API & Signaling Engine',
+      database: dbStatus.connected ? 'connected' : 'disconnected',
+      headquartersReady: Boolean(hq),
       timestamp: new Date().toISOString()
     });
   });

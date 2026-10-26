@@ -15,7 +15,8 @@ vi.mock('../services/apiService.js', () => ({
   createOffice: vi.fn().mockResolvedValue({}),
   createSession: vi.fn().mockResolvedValue({}),
   fetchOfficeLayout: vi.fn().mockResolvedValue({}),
-  fetchNearbyUsersPlanar: vi.fn().mockResolvedValue([])
+  fetchNearbyUsersPlanar: vi.fn().mockResolvedValue([]),
+  warmupBackend: vi.fn().mockResolvedValue({ success: true, ready: true })
 }));
 
 describe('UI Component Unit Tests', () => {

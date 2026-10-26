@@ -192,7 +192,12 @@ export function initializeSocketManager(io) {
           socket.data.displayName,
           initialPos.x,
           initialPos.y
-        )
+        ).catch((err) => {
+          // Graceful handling if test runner closes client before snapshot completes
+          if (process.env.NODE_ENV !== 'test') {
+            console.warn('[Socket] Initial position snapshot write deferred:', err.message);
+          }
+        });
       } catch (err) {
         console.error('[Socket] Error in office:join:', err);
         socket.emit(SOCKET_EVENTS.SERVER_ERROR, {

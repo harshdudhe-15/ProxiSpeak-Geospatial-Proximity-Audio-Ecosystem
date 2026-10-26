@@ -15,7 +15,10 @@ export class SocketService {
   }
 
   connect(url = import.meta.env.VITE_API_URL || window.location.origin) {
-    if (this.socket && this.connected) {
+    if (this.socket) {
+      if (!this.socket.connected) {
+        this.socket.connect();
+      }
       return this.socket;
     }
 

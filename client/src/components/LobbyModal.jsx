@@ -11,7 +11,7 @@ const AVATAR_COLORS = [
   '#ec4899', // Pink
 ];
 
-export function LobbyModal({ onJoinOffice, isJoining, errorMessage, onBackToHome }) {
+export function LobbyModal({ onJoinOffice, isJoining, joinStage = 'idle', errorMessage, onBackToHome }) {
   const [displayName, setDisplayName] = useState(
     localStorage.getItem('proxispeak_display_name') || ''
   );
@@ -195,7 +195,25 @@ export function LobbyModal({ onJoinOffice, isJoining, errorMessage, onBackToHome
             disabled={isJoining}
           >
             {isJoining ? (
-              <span>Connecting to Headquarters...</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#ffffff',
+                    opacity: 0.85
+                  }}
+                />
+                <span>
+                  {joinStage === 'audio' && 'Preparing your workspace...'}
+                  {joinStage === 'session' && 'Connecting to ProxiSpeak Headquarters...'}
+                  {joinStage === 'socket' && 'Connecting you to your colleagues...'}
+                  {joinStage === 'office' && 'Entering ProxiSpeak Headquarters...'}
+                  {(!joinStage || joinStage === 'idle') && 'Connecting to Headquarters...'}
+                </span>
+              </span>
             ) : (
               <>
                 <span>Enter ProxiSpeak Headquarters</span>

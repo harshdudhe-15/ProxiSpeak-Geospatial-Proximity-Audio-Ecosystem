@@ -60,3 +60,34 @@ export async function fetchNearbyUsersPlanar(officeId, x, y, radius = 120) {
   const data = await res.json();
   return data.data;
 }
+
+let warmupPromise = null;
+
+/**
+ * Sends a non-blocking preflight warmup probe to wake up Render and ensure
+ * MongoDB Atlas and ProxiSpeak Headquarters are ready before the user clicks to enter.
+ */
+export function warmupBackend() {
+  if (warmupPromise) return warmupPromise;
+
+  warmupPromise = (async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/warmup`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (!res.ok) {
+        const healthUrl = `${getApiBase().replace(/\/api$/, '')}/health`;
+        const healthRes = await fetch(healthUrl, { cache: 'no-store' });
+        return await healthRes.json();
+      }
+      return await res.json();
+    } catch (err) {
+      console.debug('[Warmup] Backend warmup initiated:', err.message);
+      return null;
+    }
+  })();
+
+  return warmupPromise;
+}

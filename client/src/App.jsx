@@ -10,7 +10,7 @@ import { HomePage } from './components/HomePage.jsx';
 import { socketService } from './services/socketService.js';
 import { webRtcService } from './services/webRtcService.js';
 import { spatialAudioMixer } from './services/spatialAudioMixer.js';
-import { createSession } from './services/apiService.js';
+import { createSession, warmupBackend } from './services/apiService.js';
 
 const normalizePath = (pathname) => {
   if (!pathname || pathname === '/' || pathname === '') return 'home';
@@ -29,6 +29,7 @@ export function App() {
 
   const [joined, setJoined] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
+  const [joinStage, setJoinStage] = useState('idle');
   const [currentUser, setCurrentUser] = useState(null);
   const [currentOffice, setCurrentOffice] = useState(null);
   const [remoteUsers, setRemoteUsers] = useState([]);
@@ -69,6 +70,13 @@ export function App() {
     }
   }, [currentRoute, joined, isJoining, navigateTo]);
 
+  // Preload and wake up backend infrastructure early while user is on homepage or login screen
+  useEffect(() => {
+    warmupBackend();
+    // Warm up Socket.IO transport early without joining any office room
+    socketService.connect();
+  }, []);
+
   // Setup WebRTC and Socket listeners
   useEffect(() => {
     const unsubRtc = webRtcService.onStateChange((state) => {
@@ -95,6 +103,7 @@ export function App() {
         setHearingRadius(data.hearingRadius);
       }
       setIsJoining(false);
+      setJoinStage('idle');
       setJoined(true);
       navigateTo('/office', true);
     });
@@ -156,29 +165,46 @@ export function App() {
   // Join Office Action
   const handleJoinOffice = async ({ displayName, avatarColor, officeId }) => {
     setIsJoining(true);
+    setJoinStage('audio');
     setStatusToast(null);
+
+    const timing = {
+      start: performance.now(),
+      marks: {}
+    };
 
     try {
       // 1. Immediately initialize and resume AudioContext inside the user interaction gesture stack
       await spatialAudioMixer.ensureAudioContext();
+      timing.marks.audioContext = Math.round(performance.now() - timing.start);
 
       // 2. Obtain server-controlled unique guest session identity
+      setJoinStage('session');
+      const sessionStart = performance.now();
       const session = await createSession({
         displayName,
         avatarColor,
         avatarIcon: 'user'
       });
+      timing.marks.createSession = Math.round(performance.now() - sessionStart);
 
       // Register session userId with WebRTC service for deterministic polite/impolite role selection
       webRtcService.setLocalUserId(session.userId);
 
       // 3. Request microphone access (gracefully continues even if denied)
+      setJoinStage('audio');
+      const micStart = performance.now();
       await webRtcService.initLocalMicrophone();
+      timing.marks.microphone = Math.round(performance.now() - micStart);
 
-      // 4. Connect to Socket.IO signaling server
+      // 4. Connect to Socket.IO signaling server (if not already pre-connected)
+      setJoinStage('socket');
+      const sockStart = performance.now();
       socketService.connect();
+      timing.marks.socketConnect = Math.round(performance.now() - sockStart);
 
       // 5. Join canonical ProxiSpeak Headquarters office room
+      setJoinStage('office');
       socketService.joinOffice({
         officeId: officeId || 'hq-main',
         userId: session.userId,
@@ -188,10 +214,16 @@ export function App() {
         x: 280,
         y: 140
       });
+
+      console.log('[ProxiSpeak Timing] Office join sequence dispatched:', {
+        ...timing.marks,
+        totalDispatchMs: Math.round(performance.now() - timing.start)
+      });
     } catch (err) {
       console.error('Failed to join office:', err);
       setStatusToast({ message: err.message || 'Failed to join office', type: 'error' });
       setIsJoining(false);
+      setJoinStage('idle');
     }
   };
 
@@ -303,6 +335,7 @@ export function App() {
         <LobbyModal
           onJoinOffice={handleJoinOffice}
           isJoining={isJoining}
+          joinStage={joinStage}
           errorMessage={statusToast?.message}
           onBackToHome={() => navigateTo('/')}
         />
