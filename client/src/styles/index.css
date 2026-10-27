@@ -249,6 +249,160 @@ html, body, #root {
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+/* Minimap Radar HUD Overlay */
+.minimap-radar-container {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  z-index: 30;
+  user-select: none;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.minimap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+
+.minimap-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.minimap-dot-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.minimap-close-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.minimap-close-btn:hover {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.minimap-stage {
+  position: relative;
+  background: #090d16;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.minimap-zone {
+  position: absolute;
+  opacity: 0.45;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.minimap-wall {
+  position: absolute;
+  background: #334155;
+  pointer-events: none;
+}
+
+.minimap-wall.glass-wall {
+  background: #0284c7;
+  opacity: 0.7;
+}
+
+.minimap-viewport-box {
+  position: absolute;
+  border: 1.5px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border-radius: 3px;
+  pointer-events: none;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
+  transition: all 0.05s linear;
+}
+
+.minimap-avatar {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.minimap-avatar.local {
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  z-index: 5;
+}
+
+.minimap-avatar-pulse {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid #38bdf8;
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.minimap-avatar.remote {
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  z-index: 4;
+}
+
+.minimap-toggle-btn {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-surface-glass-heavy);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  transition: all 0.15s ease;
+}
+
+.minimap-toggle-btn:hover {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
 /* ==========================================================================
    Bottom Controls Dock HUD
    ========================================================================== */

@@ -49,10 +49,27 @@ export async function getOrCreateHeadquartersOffice() {
   }).lean();
 
   if (hq) {
-    // Ensure code is normalized to canonical code
+    // Ensure code is normalized to canonical code and layout is upgraded to 2000x1200
+    const updates = {};
     if (hq.code !== HEADQUARTERS_CODE) {
-      await Office.updateOne({ _id: hq._id }, { $set: { code: HEADQUARTERS_CODE } });
+      updates.code = HEADQUARTERS_CODE;
       hq.code = HEADQUARTERS_CODE;
+    }
+    if (!hq.width || hq.width < DEFAULT_OFFICE_TEMPLATE.width || !hq.zones || hq.zones.length < 5) {
+      updates.width = DEFAULT_OFFICE_TEMPLATE.width;
+      updates.height = DEFAULT_OFFICE_TEMPLATE.height;
+      updates.zones = DEFAULT_OFFICE_TEMPLATE.zones;
+      updates.furniture = DEFAULT_OFFICE_TEMPLATE.furniture;
+      updates.walls = DEFAULT_OFFICE_TEMPLATE.walls;
+
+      hq.width = DEFAULT_OFFICE_TEMPLATE.width;
+      hq.height = DEFAULT_OFFICE_TEMPLATE.height;
+      hq.zones = DEFAULT_OFFICE_TEMPLATE.zones;
+      hq.furniture = DEFAULT_OFFICE_TEMPLATE.furniture;
+      hq.walls = DEFAULT_OFFICE_TEMPLATE.walls;
+    }
+    if (Object.keys(updates).length > 0) {
+      await Office.updateOne({ _id: hq._id }, { $set: updates });
     }
     cachedHeadquarters = hq;
     return hq;
