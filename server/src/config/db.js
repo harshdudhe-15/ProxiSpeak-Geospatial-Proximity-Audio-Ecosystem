@@ -38,6 +38,10 @@ export async function connectDB() {
   }
 
   const rawUri = process.env.MONGODB_URI;
+
+  console.log('[Database] MONGODB_URI exists:', Boolean(rawUri));
+  console.log('[Database] MONGODB_URI prefix:', rawUri ? rawUri.substring(0, 15) : 'MISSING');
+
   const isExplicitMongoUri = Boolean(rawUri);
   const isProduction = process.env.NODE_ENV === 'production';
   const forceMemory = process.env.USE_MEMORY_DB === 'true';
