@@ -42,13 +42,17 @@
   --transition-bounce: 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -111,6 +115,7 @@ html, body, #root {
   font-weight: 700;
   letter-spacing: -0.02em;
   background: linear-gradient(135deg, #ffffff 40%, #a5b4fc 100%);
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -789,6 +794,7 @@ html, body, #root {
     opacity: 0;
     transform: translate(-50%, -12px);
   }
+
   to {
     opacity: 1;
     transform: translate(-50%, 0);
