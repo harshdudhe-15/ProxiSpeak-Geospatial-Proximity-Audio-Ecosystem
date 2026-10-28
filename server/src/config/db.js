@@ -37,14 +37,36 @@ export async function connectDB() {
     return mongoose;
   }
 
-  const rawUri = process.env.MONGODB_URI;
-
-  console.log('[Database] MONGODB_URI exists:', Boolean(rawUri));
-  console.log('[Database] MONGODB_URI prefix:', rawUri ? rawUri.substring(0, 15) : 'MISSING');
+  // Support preferred MONGODB_URI while gracefully accepting MONGODB_URL if misconfigured in dashboard
+  const rawUri = (process.env.MONGODB_URI || process.env.MONGODB_URL || '').trim();
 
   const isExplicitMongoUri = Boolean(rawUri);
   const isProduction = process.env.NODE_ENV === 'production';
   const forceMemory = process.env.USE_MEMORY_DB === 'true';
+
+  // Determine safe URI prefix for diagnostic logging without credential leakage
+  const safePrefix = rawUri
+    ? (rawUri.startsWith('mongodb+srv://') ? 'mongodb+srv://' : rawUri.startsWith('mongodb://') ? 'mongodb://' : 'configured')
+    : 'MISSING';
+
+  console.log('[Database] MONGODB_URI exists:', isExplicitMongoUri);
+  console.log('[Database] MONGODB_URI prefix:', safePrefix);
+
+  if (!process.env.MONGODB_URI && process.env.MONGODB_URL) {
+    console.warn('[Database] Notice: Using MONGODB_URL fallback. Preferred production variable is MONGODB_URI.');
+  }
+
+  // STEP 4: Production must fail immediately with a clear error if MONGODB_URI is missing
+  if (isProduction && !rawUri) {
+    console.error('[Database] Fatal Configuration Error: MONGODB_URI is not configured for production.');
+    throw new Error('MONGODB_URI is not configured for production.');
+  }
+
+  // Production must never use the in-memory database
+  if (isProduction && forceMemory) {
+    console.error('[Database] Fatal Configuration Error: USE_MEMORY_DB=true is not permitted in production. A persistent MongoDB Atlas cluster is required.');
+    throw new Error('USE_MEMORY_DB cannot be true in production.');
+  }
 
   const uri = rawUri || 'mongodb://127.0.0.1:27017/proxispeak';
   const maskedUri = maskMongoUri(uri);
