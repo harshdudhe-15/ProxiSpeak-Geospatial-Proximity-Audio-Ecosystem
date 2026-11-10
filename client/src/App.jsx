@@ -149,10 +149,10 @@ export function App() {
     };
   }, [navigateTo]);
 
-  // Auto-resume AudioContext on user interaction gestures
+  // Auto-resume AudioContext & peer audio sinks on user interaction gestures
   useEffect(() => {
     const handleGesture = () => {
-      spatialAudioMixer.ensureAudioContext();
+      spatialAudioMixer.resumeAllAudio();
     };
     window.addEventListener('pointerdown', handleGesture);
     window.addEventListener('keydown', handleGesture);

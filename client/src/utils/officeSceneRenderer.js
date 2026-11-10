@@ -41,8 +41,8 @@ export function drawScene(
   const width = layout?.width || 2000;
   const height = layout?.height || 1200;
 
-  // 1. Foundation Base Floor
-  ctx.fillStyle = '#0a0e17';
+  // 1. Foundation Base Floor (Modern architectural light porcelain base)
+  ctx.fillStyle = '#f8fafc';
   ctx.fillRect(0, 0, width, height);
 
   // 2. Zone Floors & Architectural Flooring Patterns
@@ -112,19 +112,31 @@ export function drawScene(
 }
 
 /**
- * Draws zone-specific floor textures (parquet, carpet, tiles, terrazzo)
+ * Draws zone-specific floor textures (warm parquet, light ceramic tiles, slate carpet, terrazzo)
  */
 function drawZoneFloor(ctx, zone) {
   ctx.save();
   const radius = 14;
 
-  // Soft ambient drop shadow around zone perimeter
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-  ctx.shadowBlur = 16;
-  ctx.shadowOffsetY = 4;
+  // Soft subtle ambient drop shadow around zone perimeter
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.05)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 3;
+
+  // Determine elegant light floor fill color
+  let floorColor = '#ffffff';
+  if (zone.id.includes('conf') || zone.id.includes('boardroom')) {
+    floorColor = '#faf8f5'; // Warm executive parquet tone
+  } else if (zone.id.includes('break') || zone.id.includes('cafe')) {
+    floorColor = '#f8fafc'; // Crisp cafe porcelain tile
+  } else if (zone.id.includes('engineering') || zone.id.includes('office')) {
+    floorColor = '#f1f5f9'; // Contemporary acoustic slate woven carpet
+  } else {
+    floorColor = '#ffffff'; // Welcome Lounge / Reception terrazzo
+  }
 
   // Zone floor fill
-  ctx.fillStyle = zone.color || '#111827';
+  ctx.fillStyle = floorColor;
   ctx.beginPath();
   ctx.roundRect(zone.x, zone.y, zone.width, zone.height, radius);
   ctx.fill();
@@ -133,8 +145,8 @@ function drawZoneFloor(ctx, zone) {
 
   // Zone floor pattern details
   if (zone.id.includes('conf') || zone.id.includes('boardroom')) {
-    // Executive Boardroom: Warm mahogany wood parquet pattern
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+    // Executive Boardroom: Warm oak wood parquet plank texture
+    ctx.strokeStyle = 'rgba(180, 150, 120, 0.18)';
     ctx.lineWidth = 1;
     const plankHeight = 32;
     for (let y = zone.y + 10; y < zone.y + zone.height - 10; y += plankHeight) {
@@ -143,15 +155,15 @@ function drawZoneFloor(ctx, zone) {
       ctx.lineTo(zone.x + zone.width - 8, y);
       ctx.stroke();
     }
-    // Brass perimeter accent trim
-    ctx.strokeStyle = 'rgba(245, 158, 11, 0.15)';
-    ctx.lineWidth = 2;
+    // Subtle perimeter inlay trim
+    ctx.strokeStyle = 'rgba(217, 119, 6, 0.3)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.roundRect(zone.x + 8, zone.y + 8, zone.width - 16, zone.height - 16, 10);
     ctx.stroke();
   } else if (zone.id.includes('break') || zone.id.includes('cafe')) {
     // Cafeteria / Kitchen: Sleek ceramic tile grid
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
     ctx.lineWidth = 1;
     const tileSize = 36;
     ctx.beginPath();
@@ -166,7 +178,7 @@ function drawZoneFloor(ctx, zone) {
     ctx.stroke();
   } else if (zone.id.includes('engineering') || zone.id.includes('office')) {
     // Engineering Pods: Contemporary acoustic woven carpet tile texture
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.03)';
+    ctx.strokeStyle = 'rgba(100, 116, 139, 0.16)';
     ctx.lineWidth = 1;
     const carpetTile = 48;
     ctx.beginPath();
@@ -180,8 +192,8 @@ function drawZoneFloor(ctx, zone) {
     }
     ctx.stroke();
   } else {
-    // Welcome Reception / Lounge: Subtle modern terrazzo
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+    // Welcome Reception / Lounge: Subtle modern terrazzo grid
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
     ctx.lineWidth = 1;
     const step = 40;
     ctx.beginPath();
@@ -193,7 +205,7 @@ function drawZoneFloor(ctx, zone) {
   }
 
   // Zone border stroke
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+  ctx.strokeStyle = '#e2e8f0';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.roundRect(zone.x, zone.y, zone.width, zone.height, radius);
@@ -201,14 +213,14 @@ function drawZoneFloor(ctx, zone) {
 
   // Zone Header Pill Tag
   const headerText = zone.name.toUpperCase();
-  ctx.font = '600 11px Inter, system-ui, sans-serif';
+  ctx.font = '700 11px Inter, system-ui, sans-serif';
   const textWidth = ctx.measureText(headerText).width;
   const pillW = textWidth + 24;
   const pillH = 22;
 
-  // Header background badge
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  // Header background badge (Crisp white surface with clean border)
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#cbd5e1';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.roundRect(zone.x + 16, zone.y + 14, pillW, pillH, 6);
@@ -216,13 +228,13 @@ function drawZoneFloor(ctx, zone) {
   ctx.stroke();
 
   // Header dot indicator
-  ctx.fillStyle = zone.id.includes('conf') ? '#f59e0b' : zone.id.includes('break') ? '#10b981' : '#38bdf8';
+  ctx.fillStyle = zone.id.includes('conf') ? '#d97706' : zone.id.includes('break') ? '#16a34a' : '#0284c7';
   ctx.beginPath();
   ctx.arc(zone.x + 26, zone.y + 25, 3.5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Header text
-  ctx.fillStyle = 'rgba(241, 245, 249, 0.85)';
+  // Header text (High contrast dark slate)
+  ctx.fillStyle = '#1e293b';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(headerText, zone.x + 35, zone.y + 25);
@@ -236,8 +248,8 @@ function drawZoneFloor(ctx, zone) {
 function drawCorridorsAndFloorAccents(ctx, width, height, cameraX, cameraY, viewportW, viewportH) {
   ctx.save();
 
-  // Subtle global floor grid dots
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
+  // Subtle architectural drafting floor dots on light floor
+  ctx.fillStyle = 'rgba(100, 116, 139, 0.16)';
   const gridSpacing = 60;
   const startX = Math.floor(Math.max(0, cameraX - 80) / gridSpacing) * gridSpacing;
   const endX = Math.min(width, cameraX + viewportW + 80);
@@ -257,14 +269,14 @@ function drawCorridorsAndFloorAccents(ctx, width, height, cameraX, cameraY, view
   const emblemY = 320;
   if (isInViewport(emblemX - 100, emblemY - 100, 200, 200, cameraX, cameraY, viewportW, viewportH)) {
     // Outer compass ring
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.12)';
+    ctx.strokeStyle = 'rgba(2, 132, 199, 0.3)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(emblemX, emblemY, 64, 0, Math.PI * 2);
     ctx.stroke();
 
     // Inner ring
-    ctx.strokeStyle = 'rgba(99, 102, 241, 0.15)';
+    ctx.strokeStyle = 'rgba(79, 70, 229, 0.35)';
     ctx.setLineDash([4, 6]);
     ctx.beginPath();
     ctx.arc(emblemX, emblemY, 48, 0, Math.PI * 2);
@@ -272,20 +284,20 @@ function drawCorridorsAndFloorAccents(ctx, width, height, cameraX, cameraY, view
     ctx.setLineDash([]);
 
     // ProxiSpeak Compass Star / Brand Monogram
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.18)';
+    ctx.fillStyle = 'rgba(79, 70, 229, 0.1)';
     ctx.beginPath();
     ctx.arc(emblemX, emblemY, 20, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.font = 'bold 10px Inter, sans-serif';
+    ctx.fillStyle = '#4338ca';
+    ctx.font = 'bold 11px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('PXS', emblemX, emblemY);
 
     // Micro lettering
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-    ctx.font = '600 8px Inter, sans-serif';
+    ctx.fillStyle = '#64748b';
+    ctx.font = '700 9px Inter, sans-serif';
     ctx.fillText('PROXISPEAK HEADQUARTERS', emblemX, emblemY + 80);
   }
 
@@ -301,11 +313,11 @@ function drawWall(ctx, wall) {
   if (wall.soundBlocking) {
     // Acoustic Glass Partition
     // Drop shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
     ctx.fillRect(wall.x + 2, wall.y + 2, wall.width, wall.height);
 
     // Translucent glass fill
-    ctx.fillStyle = 'rgba(14, 165, 233, 0.14)';
+    ctx.fillStyle = 'rgba(2, 132, 199, 0.12)';
     ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
 
     // Glass aluminum border frame
@@ -314,7 +326,7 @@ function drawWall(ctx, wall) {
     ctx.strokeRect(wall.x, wall.y, wall.width, wall.height);
 
     // Acoustic soundproof hatch pattern
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
+    ctx.strokeStyle = 'rgba(2, 132, 199, 0.3)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     const isHorizontal = wall.width > wall.height;
@@ -335,22 +347,22 @@ function drawWall(ctx, wall) {
     if (wall.width >= 120 || wall.height >= 120) {
       const midX = wall.x + wall.width / 2;
       const midY = wall.y + wall.height / 2;
-      ctx.fillStyle = 'rgba(14, 165, 233, 0.8)';
+      ctx.fillStyle = '#0284c7';
       ctx.beginPath();
       ctx.arc(midX, midY, 4, 0, Math.PI * 2);
       ctx.fill();
     }
   } else {
-    // Solid Architectural Wall
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.fillRect(wall.x + 3, wall.y + 3, wall.width, wall.height);
+    // Solid Architectural Wall (Modern light architectural slate/white)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.fillRect(wall.x + 2, wall.y + 2, wall.width, wall.height);
 
     // Core wall
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = '#cbd5e1';
     ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
 
     // Highlight top edge for 3D architectural depth
-    ctx.strokeStyle = '#475569';
+    ctx.strokeStyle = '#94a3b8';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(wall.x, wall.y, wall.width, wall.height);
   }
@@ -366,9 +378,9 @@ function drawFurniture(ctx, item) {
   ctx.save();
 
   // Contact drop shadow beneath furniture
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.07)';
   ctx.beginPath();
-  ctx.roundRect(item.x + 3, item.y + 4, item.width, item.height, 6);
+  ctx.roundRect(item.x + 2, item.y + 3, item.width, item.height, 6);
   ctx.fill();
 
   switch (item.type) {
@@ -423,8 +435,8 @@ function drawFurniture(ctx, item) {
 
     default:
       // Generic sleek table
-      ctx.fillStyle = '#1e293b';
-      ctx.strokeStyle = '#334155';
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#cbd5e1';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.roundRect(item.x, item.y, item.width, item.height, 6);
@@ -432,8 +444,8 @@ function drawFurniture(ctx, item) {
       ctx.stroke();
 
       if (item.label) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.font = '500 10px Inter, sans-serif';
+        ctx.fillStyle = '#475569';
+        ctx.font = '600 10px Inter, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(item.label, item.x + item.width / 2, item.y + item.height / 2);
@@ -451,8 +463,8 @@ function drawReceptionDesk(ctx, item) {
   const { x, y, width, height } = item;
 
   // Base desk body with warm timber tone
-  ctx.fillStyle = '#1e2433';
-  ctx.strokeStyle = '#38bdf8';
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#0284c7';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.roundRect(x, y, width, height, 8);
@@ -460,7 +472,7 @@ function drawReceptionDesk(ctx, item) {
   ctx.stroke();
 
   // Illuminated front LED accent strip
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+  ctx.strokeStyle = 'rgba(2, 132, 199, 0.8)';
   ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.moveTo(x + 12, y + height - 4);
@@ -468,13 +480,13 @@ function drawReceptionDesk(ctx, item) {
   ctx.stroke();
 
   // Reception terminal monitor
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = '#334155';
   ctx.fillRect(x + width / 2 - 20, y + 10, 40, 14);
-  ctx.fillStyle = '#38bdf8';
+  ctx.fillStyle = '#0284c7';
   ctx.fillRect(x + width / 2 - 18, y + 12, 36, 10);
 
   // Label
-  ctx.fillStyle = '#e2e8f0';
+  ctx.fillStyle = '#0f172a';
   ctx.font = 'bold 11px Inter, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -482,14 +494,14 @@ function drawReceptionDesk(ctx, item) {
 }
 
 /**
- * Engineering Workstation with Dual Glowing Monitors, Keyboard & Ergonomic Chair
+ * Engineering Workstation with Dual Monitors, Keyboard & Ergonomic Chair
  */
 function drawWorkstationPod(ctx, item) {
   const { x, y, width, height, label } = item;
 
   // Main Desk Top
-  ctx.fillStyle = '#1e293b';
-  ctx.strokeStyle = '#334155';
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#cbd5e1';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.roundRect(x, y, width, height, 6);
@@ -497,7 +509,7 @@ function drawWorkstationPod(ctx, item) {
   ctx.stroke();
 
   // Desk Mat
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = '#f1f5f9';
   ctx.beginPath();
   ctx.roundRect(x + 12, y + 10, width - 24, height - 20, 4);
   ctx.fill();
@@ -509,9 +521,9 @@ function drawWorkstationPod(ctx, item) {
 
   // Left Monitor (IDE Code Lines)
   const leftMonX = x + width / 2 - monW - 6;
-  ctx.fillStyle = '#020617';
+  ctx.fillStyle = '#1e293b';
   ctx.fillRect(leftMonX, monY, monW, monH);
-  ctx.strokeStyle = '#475569';
+  ctx.strokeStyle = '#64748b';
   ctx.lineWidth = 1;
   ctx.strokeRect(leftMonX, monY, monW, monH);
 
@@ -525,8 +537,9 @@ function drawWorkstationPod(ctx, item) {
 
   // Right Monitor (Telemetry / Analytics Chart)
   const rightMonX = x + width / 2 + 6;
-  ctx.fillStyle = '#020617';
+  ctx.fillStyle = '#1e293b';
   ctx.fillRect(rightMonX, monY, monW, monH);
+  ctx.strokeStyle = '#64748b';
   ctx.strokeRect(rightMonX, monY, monW, monH);
 
   // Chart line
@@ -542,10 +555,10 @@ function drawWorkstationPod(ctx, item) {
   // Keyboard & Mouse
   const kbX = x + width / 2 - 20;
   const kbY = y + height - 26;
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = '#94a3b8';
   ctx.fillRect(kbX, kbY, 32, 9);
   // Mouse
-  ctx.fillStyle = '#475569';
+  ctx.fillStyle = '#64748b';
   ctx.beginPath();
   ctx.roundRect(kbX + 36, kbY + 1, 6, 8, 2);
   ctx.fill();
@@ -559,8 +572,8 @@ function drawWorkstationPod(ctx, item) {
   // Ergonomic Mesh Office Chair (tucked at desk)
   const chairX = x + width / 2;
   const chairY = y + height + 10;
-  ctx.fillStyle = '#0f172a';
-  ctx.strokeStyle = '#475569';
+  ctx.fillStyle = '#475569';
+  ctx.strokeStyle = '#334155';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.roundRect(chairX - 16, chairY - 8, 32, 16, 6);
@@ -568,7 +581,7 @@ function drawWorkstationPod(ctx, item) {
   ctx.stroke();
 
   // Chair Backrest Curve
-  ctx.strokeStyle = '#38bdf8';
+  ctx.strokeStyle = '#0284c7';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(chairX, chairY + 4, 14, Math.PI * 0.2, Math.PI * 0.8);
@@ -576,7 +589,7 @@ function drawWorkstationPod(ctx, item) {
 
   // Pod Label
   if (label) {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.fillStyle = '#475569';
     ctx.font = '600 10px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -590,9 +603,9 @@ function drawWorkstationPod(ctx, item) {
 function drawBoardroomTable(ctx, item) {
   const { x, y, width, height, label } = item;
 
-  // Solid Walnut Boardroom Table Top
-  ctx.fillStyle = '#261b17';
-  ctx.strokeStyle = '#52382e';
+  // Solid Natural Warm Oak Boardroom Table Top
+  ctx.fillStyle = '#faf0e6';
+  ctx.strokeStyle = '#d6ccc2';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.roundRect(x, y, width, height, 16);
@@ -600,8 +613,8 @@ function drawBoardroomTable(ctx, item) {
   ctx.stroke();
 
   // Frosted Glass Center Connectivity Trough
-  ctx.fillStyle = 'rgba(14, 165, 233, 0.15)';
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+  ctx.fillStyle = 'rgba(2, 132, 199, 0.1)';
+  ctx.strokeStyle = 'rgba(2, 132, 199, 0.3)';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.roundRect(x + 24, y + 30, width - 48, height - 60, 8);
@@ -611,11 +624,11 @@ function drawBoardroomTable(ctx, item) {
   // Conference Speakerphone Pod (Polycom in table center)
   const midX = x + width / 2;
   const midY = y + height / 2;
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = '#334155';
   ctx.beginPath();
   ctx.arc(midX, midY, 14, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#10b981';
+  ctx.strokeStyle = '#16a34a';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.arc(midX, midY, 14, 0, Math.PI * 2);
@@ -627,7 +640,7 @@ function drawBoardroomTable(ctx, item) {
   for (let i = 0; i < chairCount; i++) {
     const chairY = y + 36 + i * chairSpacing;
     // Left chair
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = '#475569';
     ctx.fillRect(x - 14, chairY - 10, 10, 20);
     // Right chair
     ctx.fillRect(x + width + 4, chairY - 10, 10, 20);
@@ -635,8 +648,8 @@ function drawBoardroomTable(ctx, item) {
 
   // Label
   if (label) {
-    ctx.fillStyle = '#f59e0b';
-    ctx.font = '600 11px Inter, sans-serif';
+    ctx.fillStyle = '#b45309';
+    ctx.font = '700 11px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, midX, y + 20);
@@ -650,8 +663,8 @@ function drawModernCouch(ctx, item) {
   const { x, y, width, height, label } = item;
 
   // Main sofa seat
-  ctx.fillStyle = '#293548';
-  ctx.strokeStyle = '#3b4a63';
+  ctx.fillStyle = '#e2e8f0';
+  ctx.strokeStyle = '#cbd5e1';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.roundRect(x, y, width, height, 8);
@@ -660,7 +673,7 @@ function drawModernCouch(ctx, item) {
 
   // Cushion division lines
   const isHorizontal = width > height;
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)';
   ctx.lineWidth = 1.5;
   if (isHorizontal) {
     const cushionW = width / 3;
@@ -673,19 +686,19 @@ function drawModernCouch(ctx, item) {
   }
 
   // Accent throw pillows
-  ctx.fillStyle = '#6366f1';
+  ctx.fillStyle = '#4f46e5';
   ctx.beginPath();
   ctx.roundRect(x + 6, y + 6, 14, 12, 3);
   ctx.fill();
 
-  ctx.fillStyle = '#06b6d4';
+  ctx.fillStyle = '#0284c7';
   ctx.beginPath();
   ctx.roundRect(x + width - 20, y + 6, 14, 12, 3);
   ctx.fill();
 
   if (label) {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.font = '500 10px Inter, sans-serif';
+    ctx.fillStyle = '#475569';
+    ctx.font = '600 10px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, x + width / 2, y + height / 2);
@@ -698,8 +711,8 @@ function drawModernCouch(ctx, item) {
 function drawDiningTable(ctx, item) {
   const { x, y, width, height, label } = item;
 
-  ctx.fillStyle = '#1e293b';
-  ctx.strokeStyle = '#475569';
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#cbd5e1';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.roundRect(x, y, width, height, 8);
@@ -707,15 +720,15 @@ function drawDiningTable(ctx, item) {
   ctx.stroke();
 
   // 4 Chairs around dining table
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = '#64748b';
   ctx.fillRect(x + 16, y - 8, 24, 6);
   ctx.fillRect(x + width - 40, y - 8, 24, 6);
   ctx.fillRect(x + 16, y + height + 2, 24, 6);
   ctx.fillRect(x + width - 40, y + height + 2, 24, 6);
 
   if (label) {
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '500 10px Inter, sans-serif';
+    ctx.fillStyle = '#475569';
+    ctx.font = '600 10px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, x + width / 2, y + height / 2);
@@ -728,9 +741,9 @@ function drawDiningTable(ctx, item) {
 function drawEspressoBar(ctx, item) {
   const { x, y, width, height, label } = item;
 
-  // Granite bar counter
-  ctx.fillStyle = '#111827';
-  ctx.strokeStyle = '#10b981';
+  // Modern bar counter
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#16a34a';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.roundRect(x, y, width, height, 6);
@@ -738,20 +751,22 @@ function drawEspressoBar(ctx, item) {
   ctx.stroke();
 
   // Chrome Espresso Machine
-  ctx.fillStyle = '#94a3b8';
+  ctx.fillStyle = '#64748b';
   ctx.fillRect(x + 20, y + 10, 36, 24);
-  ctx.fillStyle = '#cbd5e1';
+  ctx.fillStyle = '#94a3b8';
   ctx.fillRect(x + 24, y + 14, 28, 8);
 
   // Tiny Coffee Cups
   ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#cbd5e1';
   ctx.beginPath();
   ctx.arc(x + 70, y + 20, 3.5, 0, Math.PI * 2);
   ctx.arc(x + 82, y + 20, 3.5, 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
 
   if (label) {
-    ctx.fillStyle = '#10b981';
+    ctx.fillStyle = '#15803d';
     ctx.font = 'bold 11px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -769,10 +784,13 @@ function drawWaterCooler(ctx, item) {
   const radius = width / 2;
 
   // White base dispenser
-  ctx.fillStyle = '#e2e8f0';
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
 
   // Blue water bottle top
   ctx.fillStyle = '#0284c7';
@@ -797,19 +815,22 @@ function drawPottedPlant(ctx, item) {
   const potRadius = Math.min(width, height) / 2.6;
 
   // Ceramic white pot
-  ctx.fillStyle = '#f1f5f9';
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.arc(centerX, centerY, potRadius, 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
 
   // Soil
-  ctx.fillStyle = '#3f2e21';
+  ctx.fillStyle = '#5c4033';
   ctx.beginPath();
   ctx.arc(centerX, centerY, potRadius - 3, 0, Math.PI * 2);
   ctx.fill();
 
   // Lush green leaves radiating outward
-  ctx.fillStyle = '#10b981';
+  ctx.fillStyle = '#16a34a';
   const leafCount = 6;
   for (let i = 0; i < leafCount; i++) {
     const angle = (i * Math.PI * 2) / leafCount;
@@ -821,7 +842,7 @@ function drawPottedPlant(ctx, item) {
   }
 
   // Inner leaf highlights
-  ctx.fillStyle = '#34d399';
+  ctx.fillStyle = '#22c55e';
   ctx.beginPath();
   ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
   ctx.fill();
@@ -834,8 +855,8 @@ function drawWallDisplay(ctx, item) {
   const { x, y, width, height, label } = item;
 
   // Screen frame
-  ctx.fillStyle = '#020617';
-  ctx.strokeStyle = '#38bdf8';
+  ctx.fillStyle = '#334155';
+  ctx.strokeStyle = '#cbd5e1';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.roundRect(x, y, width, height, 4);
@@ -843,10 +864,10 @@ function drawWallDisplay(ctx, item) {
   ctx.stroke();
 
   // Slide content simulation
-  ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
+  ctx.fillStyle = '#f8fafc';
   ctx.fillRect(x + 4, y + 4, width - 8, height - 8);
 
-  ctx.fillStyle = '#38bdf8';
+  ctx.fillStyle = '#0284c7';
   ctx.font = 'bold 9px Inter, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -859,7 +880,7 @@ function drawWallDisplay(ctx, item) {
 function drawWhiteboard(ctx, item) {
   const { x, y, width, height } = item;
 
-  ctx.fillStyle = '#f8fafc';
+  ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = '#94a3b8';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -883,7 +904,7 @@ function drawPingPongTable(ctx, item) {
   const { x, y, width, height, label } = item;
 
   // Green table surface
-  ctx.fillStyle = '#065f46';
+  ctx.fillStyle = '#059669';
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -901,8 +922,8 @@ function drawPingPongTable(ctx, item) {
   ctx.stroke();
 
   if (label) {
-    ctx.fillStyle = '#a7f3d0';
-    ctx.font = '600 10px Inter, sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 10px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, x + width / 4, y + height / 2);
@@ -915,7 +936,7 @@ function drawPingPongTable(ctx, item) {
 function drawBookshelf(ctx, item) {
   const { x, y, width, height } = item;
 
-  ctx.fillStyle = '#3e2723';
+  ctx.fillStyle = '#d6ccc2';
   ctx.fillRect(x, y, width, height);
 
   // Books row
@@ -931,17 +952,17 @@ function drawBookshelf(ctx, item) {
  * Draws the proximity ray between two users in earshot
  */
 function drawProximityRay(ctx, localPos, remotePos, dist, hearingRadius, isObstructed) {
-  const alpha = Math.max(0.18, 1 - dist / hearingRadius);
+  const alpha = Math.max(0.25, 1 - dist / hearingRadius);
 
   ctx.save();
   if (isObstructed) {
     // Acoustic barrier obstruction: dashed amber line
-    ctx.strokeStyle = `rgba(245, 158, 11, ${alpha.toFixed(2)})`;
+    ctx.strokeStyle = `rgba(217, 119, 6, ${alpha.toFixed(2)})`;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 6]);
   } else {
-    // Clear audio connection: cyan pulse line
-    ctx.strokeStyle = `rgba(56, 189, 248, ${alpha.toFixed(2)})`;
+    // Clear audio connection: sky/cyan pulse line
+    ctx.strokeStyle = `rgba(2, 132, 199, ${alpha.toFixed(2)})`;
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
   }
@@ -954,7 +975,7 @@ function drawProximityRay(ctx, localPos, remotePos, dist, hearingRadius, isObstr
   // Midpoint audio connection icon / blip
   const midX = (localPos.x + remotePos.x) / 2;
   const midY = (localPos.y + remotePos.y) / 2;
-  ctx.fillStyle = isObstructed ? 'rgba(245, 158, 11, 0.7)' : 'rgba(56, 189, 248, 0.7)';
+  ctx.fillStyle = isObstructed ? 'rgba(217, 119, 6, 0.85)' : 'rgba(2, 132, 199, 0.85)';
   ctx.beginPath();
   ctx.arc(midX, midY, 3, 0, Math.PI * 2);
   ctx.fill();
@@ -968,7 +989,7 @@ function drawProximityRay(ctx, localPos, remotePos, dist, hearingRadius, isObstr
 function drawHearingRadiusAura(ctx, localPos, hearingRadius) {
   ctx.save();
 
-  // Radial gradient aura
+  // Soft radial gradient aura
   const grad = ctx.createRadialGradient(
     localPos.x,
     localPos.y,
@@ -977,8 +998,8 @@ function drawHearingRadiusAura(ctx, localPos, hearingRadius) {
     localPos.y,
     hearingRadius
   );
-  grad.addColorStop(0, 'rgba(99, 102, 241, 0.16)');
-  grad.addColorStop(0.7, 'rgba(99, 102, 241, 0.05)');
+  grad.addColorStop(0, 'rgba(99, 102, 241, 0.12)');
+  grad.addColorStop(0.7, 'rgba(99, 102, 241, 0.04)');
   grad.addColorStop(1, 'rgba(99, 102, 241, 0)');
 
   ctx.fillStyle = grad;
@@ -987,7 +1008,7 @@ function drawHearingRadiusAura(ctx, localPos, hearingRadius) {
   ctx.fill();
 
   // Dashed outer boundary ring
-  ctx.strokeStyle = 'rgba(99, 102, 241, 0.45)';
+  ctx.strokeStyle = 'rgba(99, 102, 241, 0.35)';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([6, 6]);
   ctx.stroke();
@@ -1002,7 +1023,7 @@ export function drawAvatar(ctx, { x, y, displayName, color, isSpeaking, isMuted,
   ctx.save();
 
   // 1. Soft contact shadow beneath avatar
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.16)';
   ctx.beginPath();
   ctx.arc(x, y + 4, AVATAR_RADIUS + 2, 0, Math.PI * 2);
   ctx.fill();
@@ -1028,8 +1049,8 @@ export function drawAvatar(ctx, { x, y, displayName, color, isSpeaking, isMuted,
   ctx.arc(x, y, AVATAR_RADIUS, 0, Math.PI * 2);
   ctx.fill();
 
-  // 4. Border (Glowing cyan border if self, crisp border if others)
-  ctx.strokeStyle = isSelf ? '#38bdf8' : 'rgba(255, 255, 255, 0.85)';
+  // 4. Border (Crisp cyan if self, clean white if others)
+  ctx.strokeStyle = isSelf ? '#0284c7' : '#ffffff';
   ctx.lineWidth = isSelf ? 3 : 2;
   ctx.stroke();
 
@@ -1043,11 +1064,11 @@ export function drawAvatar(ctx, { x, y, displayName, color, isSpeaking, isMuted,
 
   // 6. Microphone Muted Badge in lower corner
   if (isMuted) {
-    ctx.fillStyle = '#f43f5e';
+    ctx.fillStyle = '#ef4444';
     ctx.beginPath();
     ctx.arc(x + 14, y + 14, 7, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#0f172a';
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
@@ -1056,7 +1077,7 @@ export function drawAvatar(ctx, { x, y, displayName, color, isSpeaking, isMuted,
     ctx.fillText('✕', x + 14, y + 14);
   }
 
-  // 7. Glassmorphic Name Pill Label
+  // 7. Light Clean Name Pill Label
   const nameText = displayName || 'User';
   ctx.font = `${isSelf ? '600' : '500'} 11px Inter, system-ui, sans-serif`;
   const textW = ctx.measureText(nameText).width;
@@ -1064,20 +1085,27 @@ export function drawAvatar(ctx, { x, y, displayName, color, isSpeaking, isMuted,
   const tagHeight = 20;
   const tagY = y - AVATAR_RADIUS - 24;
 
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-  ctx.strokeStyle = isSelf ? 'rgba(56, 189, 248, 0.5)' : 'rgba(255, 255, 255, 0.15)';
+  // Drop shadow for name pill on light background
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = isSelf ? '#0284c7' : '#cbd5e1';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.roundRect(x - tagWidth / 2, tagY, tagWidth, tagHeight, 10);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = isSelf ? '#38bdf8' : '#f1f5f9';
+  ctx.shadowColor = 'transparent';
+
+  ctx.fillStyle = isSelf ? '#0284c7' : '#1e293b';
   ctx.fillText(nameText, x, tagY + tagHeight / 2);
 
   // 8. "YOU" Indicator Arrow on top if self
   if (isSelf) {
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = '#0284c7';
     ctx.beginPath();
     ctx.moveTo(x, tagY - 2);
     ctx.lineTo(x - 5, tagY - 7);

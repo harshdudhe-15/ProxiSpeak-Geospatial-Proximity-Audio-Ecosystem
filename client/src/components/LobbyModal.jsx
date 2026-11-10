@@ -58,15 +58,15 @@ export function LobbyModal({ onJoinOffice, isJoining, joinStage = 'idle', errorM
               gap: '6px',
               background: 'none',
               border: 'none',
-              color: '#94a3b8',
+              color: '#64748b',
               fontSize: '13px',
               cursor: 'pointer',
               padding: '2px 0 14px 0',
               fontWeight: 500,
               transition: 'color 150ms ease'
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#ffffff'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#0f172a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
           >
             <ArrowLeft size={16} />
             <span>&larr; Back to Homepage</span>
@@ -90,8 +90,8 @@ export function LobbyModal({ onJoinOffice, isJoining, joinStage = 'idle', errorM
             justifyContent: 'space-between',
             padding: '12px 16px',
             marginBottom: '20px',
-            background: 'rgba(99, 102, 241, 0.12)',
-            border: '1px solid rgba(99, 102, 241, 0.28)',
+            background: 'rgba(99, 102, 241, 0.08)',
+            border: '1px solid rgba(99, 102, 241, 0.22)',
             borderRadius: '12px'
           }}
         >
@@ -101,19 +101,19 @@ export function LobbyModal({ onJoinOffice, isJoining, joinStage = 'idle', errorM
                 width: '32px',
                 height: '32px',
                 borderRadius: '8px',
-                background: 'rgba(99, 102, 241, 0.25)',
+                background: 'rgba(99, 102, 241, 0.15)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <Building size={18} color="#818cf8" />
+              <Building size={18} color="#4f46e5" />
             </div>
             <div>
-              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#818cf8', fontWeight: 600 }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#4f46e5', fontWeight: 600 }}>
                 Destination Office
               </div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
                 ProxiSpeak Headquarters
               </div>
             </div>
@@ -124,8 +124,8 @@ export function LobbyModal({ onJoinOffice, isJoining, joinStage = 'idle', errorM
               alignItems: 'center',
               gap: '6px',
               fontSize: '11px',
-              color: '#34d399',
-              background: 'rgba(16, 185, 129, 0.15)',
+              color: '#059669',
+              background: 'rgba(16, 185, 129, 0.12)',
               padding: '4px 10px',
               borderRadius: '999px',
               fontWeight: 600
@@ -141,9 +141,9 @@ export function LobbyModal({ onJoinOffice, isJoining, joinStage = 'idle', errorM
             style={{
               padding: '10px 14px',
               borderRadius: '8px',
-              background: 'rgba(244, 63, 94, 0.15)',
-              border: '1px solid rgba(244, 63, 94, 0.3)',
-              color: '#fca5a5',
+              background: '#fff1f2',
+              border: '1px solid #fecdd3',
+              color: '#e11d48',
               fontSize: '13px',
               marginBottom: '18px'
             }}

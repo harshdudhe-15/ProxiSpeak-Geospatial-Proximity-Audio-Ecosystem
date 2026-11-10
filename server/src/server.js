@@ -41,27 +41,24 @@ async function startServer() {
     const dbDuration = (performance.now() - dbStart).toFixed(2);
     console.log(`[Startup] Database connection verified in ${dbDuration}ms`);
 
-    // 2. Prepare required indexes
-    const indexStart = performance.now();
-    await Promise.allSettled([
-      Office.init(),
-      User.init(),
-      PositionSnapshot.init()
+    // 2. Concurrently prepare indexes and pre-warm canonical ProxiSpeak Headquarters
+    const warmupStart = performance.now();
+    const [_, hq] = await Promise.all([
+      Promise.allSettled([
+        Office.init(),
+        User.init(),
+        PositionSnapshot.init()
+      ]),
+      prewarmHeadquartersOffice()
     ]);
-    const indexDuration = (performance.now() - indexStart).toFixed(2);
-    console.log(`[Startup] Database indexes prepared in ${indexDuration}ms`);
-
-    // 3. Pre-warm canonical ProxiSpeak Headquarters into in-memory cache
-    const hqStart = performance.now();
-    const hq = await prewarmHeadquartersOffice();
     const hqId = String(hq._id || hq.code || 'hq-main');
     const obstacles = [
       ...(hq.walls || []),
       ...(hq.furniture || [])
     ];
     proximityEngine.setOfficeObstacles(hqId, obstacles);
-    const hqDuration = (performance.now() - hqStart).toFixed(2);
-    console.log(`[Startup] Canonical Headquarters pre-warmed in ${hqDuration}ms (ID: ${hqId})`);
+    const warmupDuration = (performance.now() - warmupStart).toFixed(2);
+    console.log(`[Startup] Canonical Headquarters pre-warmed & indexes ready in ${warmupDuration}ms (ID: ${hqId})`);
 
     // 4. Start accepting application traffic
     httpServer.listen(PORT, '0.0.0.0', () => {

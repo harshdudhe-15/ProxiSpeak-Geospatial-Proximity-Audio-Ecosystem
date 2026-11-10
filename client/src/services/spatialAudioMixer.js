@@ -222,6 +222,7 @@ export class SpatialAudioMixer {
         analyserNode,
         isObstructed: false,
         micMuted: false,
+        proximityMuted: false,
         lastComputedGain: initialGain,
         lastTargetGain: initialGain,
         lastTargetPan: initialPan
@@ -252,13 +253,18 @@ export class SpatialAudioMixer {
     let targetGain = calculateGain(distance, this.hearingRadius);
     const targetPan = calculatePan(localPos.x, remotePos.x, this.hearingRadius);
 
+    // If within hearing radius, automatically clear proximity mute
+    if (distance <= this.hearingRadius) {
+      nodeGroup.proximityMuted = false;
+    }
+
     // If an acoustic wall or sound-blocking obstacle obstructs line of sight, muffle audio by 85%
     if (isObstructed && targetGain > 0) {
       targetGain *= 0.15;
     }
 
-    // If peer is muted or master is muted, silence
-    if (nodeGroup.micMuted || this.masterMuted) {
+    // If peer is muted (mic muted or proximity muted) or master is muted, silence
+    if (nodeGroup.micMuted || nodeGroup.proximityMuted || this.masterMuted) {
       targetGain = 0;
     }
 
@@ -289,14 +295,29 @@ export class SpatialAudioMixer {
   }
 
   /**
-   * Sets mute status for a specific peer.
+   * Sets proximity mute status for a specific peer (e.g. when moving into dormant cache).
+   */
+  setPeerProximityMute(peerId, isMuted) {
+    const nodeGroup = this.peerNodes.get(peerId);
+    if (nodeGroup) {
+      nodeGroup.proximityMuted = Boolean(isMuted);
+      if (this.audioCtx && nodeGroup.gainNode) {
+        const targetGain = (nodeGroup.micMuted || nodeGroup.proximityMuted || this.masterMuted) ? 0 : (nodeGroup.lastComputedGain || 0);
+        nodeGroup.lastTargetGain = targetGain;
+        nodeGroup.gainNode.gain.setTargetAtTime(targetGain, this.audioCtx.currentTime, 0.05);
+      }
+    }
+  }
+
+  /**
+   * Sets microphone mute status for a specific peer (broadcast by remote user).
    */
   setPeerMuteState(peerId, isMuted) {
     const nodeGroup = this.peerNodes.get(peerId);
     if (nodeGroup) {
       nodeGroup.micMuted = Boolean(isMuted);
       if (this.audioCtx && nodeGroup.gainNode) {
-        const targetGain = nodeGroup.micMuted ? 0 : (nodeGroup.lastComputedGain || 0);
+        const targetGain = (nodeGroup.micMuted || nodeGroup.proximityMuted || this.masterMuted) ? 0 : (nodeGroup.lastComputedGain || 0);
         nodeGroup.lastTargetGain = targetGain;
         nodeGroup.gainNode.gain.setTargetAtTime(targetGain, this.audioCtx.currentTime, 0.05);
       }
@@ -310,7 +331,7 @@ export class SpatialAudioMixer {
     const nodeGroup = this.peerNodes.get(peerId);
     if (!nodeGroup || !this.audioCtx) return false;
     if (this.audioCtx.state !== 'running') return false;
-    if (this.masterMuted || nodeGroup.micMuted) return false;
+    if (this.masterMuted || nodeGroup.micMuted || nodeGroup.proximityMuted) return false;
     return (nodeGroup.lastComputedGain || 0) > 0;
   }
 

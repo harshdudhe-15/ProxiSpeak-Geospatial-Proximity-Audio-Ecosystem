@@ -565,6 +565,14 @@ export class WebRtcService {
         muted: event.track?.muted
       });
 
+      // When the audio track un-mutes (first RTP packet decoded), trigger playback resume
+      if (event.track && event.track.addEventListener) {
+        event.track.addEventListener('unmute', () => {
+          this.logDiagnostic(peerId, 'track_unmuted_rtp_flowing');
+          spatialAudioMixer.resumeAllAudio();
+        });
+      }
+
       const stream = (event.streams && event.streams[0]) ||
         (typeof MediaStream !== 'undefined' ? new MediaStream([event.track]) : { id: 'fallback-stream', getTracks: () => [event.track] });
       spatialAudioMixer.addPeerStream(peerId, stream);
@@ -857,10 +865,33 @@ export class WebRtcService {
 
     this.setLifecycleState(peerId, 'connected');
     this.setPeerMilestone(peerId, 'peer-connected');
-    spatialAudioMixer.setPeerMuteState(peerId, false);
+    spatialAudioMixer.setPeerProximityMute(peerId, false);
 
     this.logDiagnostic(peerId, 'dormant_peer_reactivated_reused');
     this.notifyStateChange();
+  }
+
+  /**
+   * Handles proximity:entered by waking dormant peers or initiating negotiation.
+   */
+  handleProximityEntered(peerId, shouldInitiateOffer, socket) {
+    if (!peerId) return;
+
+    if (this.dormantTimers.has(peerId)) {
+      clearTimeout(this.dormantTimers.get(peerId));
+      this.dormantTimers.delete(peerId);
+    }
+
+    const currentLifecycle = this.getLifecycleState(peerId);
+    if (currentLifecycle === 'dormant') {
+      this.reactivateDormantPeer(peerId);
+    } else {
+      spatialAudioMixer.setPeerProximityMute(peerId, false);
+    }
+
+    if (shouldInitiateOffer) {
+      this.initiateOffer(peerId, socket);
+    }
   }
 
   /**
@@ -898,7 +929,7 @@ export class WebRtcService {
 
       this.setLifecycleState(peerId, 'dormant');
       this.setPeerMilestone(peerId, 'idle');
-      spatialAudioMixer.setPeerMuteState(peerId, true);
+      spatialAudioMixer.setPeerProximityMute(peerId, true);
 
       // Bounded 10s grace timer before true teardown
       const timer = setTimeout(() => {

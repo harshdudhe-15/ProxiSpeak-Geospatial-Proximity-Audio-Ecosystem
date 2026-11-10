@@ -96,10 +96,7 @@ export class SocketService {
       timeline.record('proximityDetected');
 
       this.emitInternal('proximity:entered', data);
-
-      if (shouldInitiateOffer) {
-        webRtcService.initiateOffer(peerId, this.socket);
-      }
+      webRtcService.handleProximityEntered(peerId, shouldInitiateOffer, this.socket);
     });
 
     this.socket.on('proximity:left', (data) => {

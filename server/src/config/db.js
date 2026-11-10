@@ -1,7 +1,14 @@
 import mongoose from 'mongoose';
+import dns from 'dns';
+
+// Ensure IPv4 lookup precedence to avoid slow dual-stack SRV resolution hangs on cloud hosts
+if (dns && typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 let memoryServerInstance = null;
 let connectionEstablishedAt = null;
+let connectionPromise = null;
 
 /**
  * Safely masks MongoDB connection URI for diagnostic logging without leaking credentials.
@@ -37,101 +44,116 @@ export async function connectDB() {
     return mongoose;
   }
 
-  // Support preferred MONGODB_URI while gracefully accepting MONGODB_URL if misconfigured in dashboard
-  const rawUri = (process.env.MONGODB_URI || process.env.MONGODB_URL || '').trim();
-
-  const isExplicitMongoUri = Boolean(rawUri);
-  const isProduction = process.env.NODE_ENV === 'production';
-  const forceMemory = process.env.USE_MEMORY_DB === 'true';
-
-  // Determine safe URI prefix for diagnostic logging without credential leakage
-  const safePrefix = rawUri
-    ? (rawUri.startsWith('mongodb+srv://') ? 'mongodb+srv://' : rawUri.startsWith('mongodb://') ? 'mongodb://' : 'configured')
-    : 'MISSING';
-
-  console.log('[Database] MONGODB_URI exists:', isExplicitMongoUri);
-  console.log('[Database] MONGODB_URI prefix:', safePrefix);
-
-  if (!process.env.MONGODB_URI && process.env.MONGODB_URL) {
-    console.warn('[Database] Notice: Using MONGODB_URL fallback. Preferred production variable is MONGODB_URI.');
+  // If a connection is actively being negotiated, await that in-flight promise to prevent duplicate pools
+  if (connectionPromise) {
+    return connectionPromise;
   }
 
-  // STEP 4: Production must fail immediately with a clear error if MONGODB_URI is missing
-  if (isProduction && !rawUri) {
-    console.error('[Database] Fatal Configuration Error: MONGODB_URI is not configured for production.');
-    throw new Error('MONGODB_URI is not configured for production.');
-  }
+  connectionPromise = (async () => {
+    // Support preferred MONGODB_URI while gracefully accepting MONGODB_URL if misconfigured in dashboard
+    const rawUri = (process.env.MONGODB_URI || process.env.MONGODB_URL || '').trim();
 
-  // Production must never use the in-memory database
-  if (isProduction && forceMemory) {
-    console.error('[Database] Fatal Configuration Error: USE_MEMORY_DB=true is not permitted in production. A persistent MongoDB Atlas cluster is required.');
-    throw new Error('USE_MEMORY_DB cannot be true in production.');
-  }
+    const isExplicitMongoUri = Boolean(rawUri);
+    const isProduction = process.env.NODE_ENV === 'production';
+    const forceMemory = process.env.USE_MEMORY_DB === 'true';
 
-  const uri = rawUri || 'mongodb://127.0.0.1:27017/proxispeak';
-  const maskedUri = maskMongoUri(uri);
+    // Determine safe URI prefix for diagnostic logging without credential leakage
+    const safePrefix = rawUri
+      ? (rawUri.startsWith('mongodb+srv://') ? 'mongodb+srv://' : rawUri.startsWith('mongodb://') ? 'mongodb://' : 'configured')
+      : 'MISSING';
 
-  const mongooseOptions = {
-    serverSelectionTimeoutMS: 10000, // 10s for DNS SRV lookup & TLS handshake to Atlas
-    connectTimeoutMS: 10000,
-    maxPoolSize: 10,
-    minPoolSize: 2,                  // Keeps warm sockets open in pool
-    socketTimeoutMS: 45000,
-    family: 4                        // Prefer IPv4 to prevent cloud IPv6 resolution hangs
-  };
+    console.log('[Database] MONGODB_URI exists:', isExplicitMongoUri);
+    console.log('[Database] MONGODB_URI prefix:', safePrefix);
 
-  if (!forceMemory) {
-    try {
-      console.log(`[Database] Attempting connection to MongoDB at: ${maskedUri}`);
-      const conn = await mongoose.connect(uri, mongooseOptions);
-      connectionEstablishedAt = Date.now();
-      console.log(`[Database] Successfully connected to MongoDB: ${conn.connection.host}`);
-      return conn;
-    } catch (err) {
-      console.warn(`[Database] Initial MongoDB connection attempt failed: ${err.message}`);
-
-      // If in production or an explicit MongoDB URI (like MongoDB Atlas) was provided,
-      // retry once before failing. NEVER fall back to downloading mongodb-memory-server in production!
-      if (isExplicitMongoUri || isProduction) {
-        console.log(`[Database] Retrying MongoDB connection in 2000ms...`);
-        await new Promise(res => setTimeout(res, 2000));
-        try {
-          const retryConn = await mongoose.connect(uri, mongooseOptions);
-          connectionEstablishedAt = Date.now();
-          console.log(`[Database] Successfully connected to MongoDB on retry: ${retryConn.connection.host}`);
-          return retryConn;
-        } catch (retryErr) {
-          console.error(`[Database] Fatal error: Could not connect to configured MongoDB (${maskedUri}): ${retryErr.message}`);
-          throw retryErr;
-        }
-      }
-
-      console.log(`[Database] Falling back to high-performance in-memory MongoDB engine for local development...`);
+    if (!process.env.MONGODB_URI && process.env.MONGODB_URL) {
+      console.warn('[Database] Notice: Using MONGODB_URL fallback. Preferred production variable is MONGODB_URI.');
     }
-  }
 
-  // Fallback or explicit in-memory MongoDB (local development/tests only)
-  try {
-    const { MongoMemoryServer } = await import('mongodb-memory-server');
-    if (!memoryServerInstance) {
-      memoryServerInstance = await MongoMemoryServer.create();
+    // STEP 4: Production must fail immediately with a clear error if MONGODB_URI is missing
+    if (isProduction && !rawUri) {
+      console.error('[Database] Fatal Configuration Error: MONGODB_URI is not configured for production.');
+      throw new Error('MONGODB_URI is not configured for production.');
     }
-    const memUri = memoryServerInstance.getUri();
-    console.log(`[Database] Starting In-Memory MongoDB Server at: ${memUri}`);
-    const conn = await mongoose.connect(memUri, {
+
+    // Production must never use the in-memory database
+    if (isProduction && forceMemory) {
+      console.error('[Database] Fatal Configuration Error: USE_MEMORY_DB=true is not permitted in production. A persistent MongoDB Atlas cluster is required.');
+      throw new Error('USE_MEMORY_DB cannot be true in production.');
+    }
+
+    const uri = rawUri || 'mongodb://127.0.0.1:27017/proxispeak';
+    const maskedUri = maskMongoUri(uri);
+
+    const mongooseOptions = {
+      serverSelectionTimeoutMS: 5000, // 5s fast fail/retry for DNS SRV lookup & TLS handshake to Atlas
+      connectTimeoutMS: 10000,
       maxPoolSize: 10,
-      minPoolSize: 2
-    });
-    connectionEstablishedAt = Date.now();
-    console.log(`[Database] Connected to In-Memory MongoDB instance successfully.`);
-    return conn;
-  } catch (memErr) {
-    console.error(`[Database] Failed to start In-Memory MongoDB: ${memErr.message}`);
-    throw memErr;
+      minPoolSize: 2,                  // Keeps warm sockets open in pool
+      socketTimeoutMS: 45000,
+      family: 4,                       // Prefer IPv4 to prevent cloud IPv6 resolution hangs
+      autoIndex: !isProduction         // Disable expensive auto-indexing during queries in production
+    };
+
+    if (!forceMemory) {
+      try {
+        console.log(`[Database] Attempting connection to MongoDB at: ${maskedUri}`);
+        const conn = await mongoose.connect(uri, mongooseOptions);
+        connectionEstablishedAt = Date.now();
+        console.log(`[Database] Successfully connected to MongoDB: ${conn.connection.host}`);
+        return conn;
+      } catch (err) {
+        console.warn(`[Database] Initial MongoDB connection attempt failed: ${err.message}`);
+
+        // If in production or an explicit MongoDB URI (like MongoDB Atlas) was provided,
+        // retry once before failing. NEVER fall back to downloading mongodb-memory-server in production!
+        if (isExplicitMongoUri || isProduction) {
+          console.log(`[Database] Retrying MongoDB connection in 2000ms...`);
+          await new Promise(res => setTimeout(res, 2000));
+          try {
+            const retryConn = await mongoose.connect(uri, mongooseOptions);
+            connectionEstablishedAt = Date.now();
+            console.log(`[Database] Successfully connected to MongoDB on retry: ${retryConn.connection.host}`);
+            return retryConn;
+          } catch (retryErr) {
+            console.error(`[Database] Fatal error: Could not connect to configured MongoDB (${maskedUri}): ${retryErr.message}`);
+            throw retryErr;
+          }
+        }
+
+        console.log(`[Database] Falling back to high-performance in-memory MongoDB engine for local development...`);
+      }
+    }
+
+    // Fallback or explicit in-memory MongoDB (local development/tests only)
+    try {
+      const { MongoMemoryServer } = await import('mongodb-memory-server');
+      if (!memoryServerInstance) {
+        memoryServerInstance = await MongoMemoryServer.create();
+      }
+      const memUri = memoryServerInstance.getUri();
+      console.log(`[Database] Starting In-Memory MongoDB Server at: ${memUri}`);
+      const conn = await mongoose.connect(memUri, {
+        maxPoolSize: 10,
+        minPoolSize: 2
+      });
+      connectionEstablishedAt = Date.now();
+      console.log(`[Database] Connected to In-Memory MongoDB instance successfully.`);
+      return conn;
+    } catch (memErr) {
+      console.error(`[Database] Failed to start In-Memory MongoDB: ${memErr.message}`);
+      throw memErr;
+    }
+  })();
+
+  try {
+    return await connectionPromise;
+  } finally {
+    connectionPromise = null;
   }
 }
 
 export async function disconnectDB() {
+  connectionPromise = null;
   if (mongoose.connection.readyState !== 0) {
     await mongoose.disconnect();
   }

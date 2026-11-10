@@ -58,7 +58,7 @@ export function ParticipantRoster({
               </div>
               <div className="roster-name-group">
                 <span className="roster-user-name">
-                  {currentUser.displayName} <span style={{ color: '#38bdf8', fontSize: '11px' }}>(You)</span>
+                  {currentUser.displayName} <span style={{ color: '#0284c7', fontSize: '11px', fontWeight: 600 }}>(You)</span>
                 </span>
                 <span className="roster-proximity-tag active">
                   <Radio size={10} /> Local Avatar
