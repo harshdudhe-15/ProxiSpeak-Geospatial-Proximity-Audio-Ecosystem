@@ -37,16 +37,16 @@ export function HomePage({ onEnterOffice, isJoined = false }) {
       {isJoined && (
         <div
           style={{
-            backgroundColor: 'rgba(16, 185, 129, 0.2)',
-            borderBottom: '1px solid rgba(16, 185, 129, 0.4)',
+            backgroundColor: '#ecfdf5',
+            borderBottom: '1px solid #a7f3d0',
             padding: '8px 16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '16px',
             fontSize: '13px',
-            color: '#a7f3d0',
-            fontWeight: 500,
+            color: '#065f46',
+            fontWeight: 600,
             position: 'relative',
             zIndex: 101
           }}
@@ -56,9 +56,9 @@ export function HomePage({ onEnterOffice, isJoined = false }) {
             type="button"
             onClick={onEnterOffice}
             style={{
-              background: '#10b981',
+              background: '#059669',
               border: 'none',
-              color: '#064e3b',
+              color: '#ffffff',
               padding: '4px 12px',
               borderRadius: '6px',
               cursor: 'pointer',

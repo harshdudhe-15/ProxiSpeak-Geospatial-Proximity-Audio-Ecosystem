@@ -201,22 +201,22 @@ export function HeroOfficeMap() {
       {/* Live Telemetry Info Bar */}
       <div className="hp-visual-footer-bar">
         <div className="hp-visual-footer-tag">
-          <Users size={14} color="#818cf8" />
+          <Users size={14} color="#4f46e5" />
           <span>Target: <strong>{selectedTarget.name}</strong></span>
         </div>
 
         <div className="hp-visual-footer-tag">
           {selectedTarget.inRange ? (
             <>
-              <Volume2 size={14} color="#10b981" />
-              <span style={{ color: '#34d399' }}>
+              <Volume2 size={14} color="#059669" />
+              <span style={{ color: '#059669', fontWeight: 600 }}>
                 Distance: {selectedTarget.distance}px • Volume {selectedTarget.volume}%
               </span>
             </>
           ) : (
             <>
               <VolumeX size={14} color="#64748b" />
-              <span style={{ color: '#94a3b8' }}>
+              <span style={{ color: '#64748b' }}>
                 Distance: {selectedTarget.distance}px • Out of Range
               </span>
             </>

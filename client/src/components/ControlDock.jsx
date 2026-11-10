@@ -38,8 +38,8 @@ export function ControlDock({
 
       {/* Hearing Radius Controller */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 8px' }}>
-        <Sliders size={16} color="#94a3b8" />
-        <span style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+        <Sliders size={16} color="#64748b" />
+        <span style={{ fontSize: '12px', color: '#475569', fontWeight: 500, whiteSpace: 'nowrap' }}>
           Radius: {hearingRadius}px
         </span>
         <input

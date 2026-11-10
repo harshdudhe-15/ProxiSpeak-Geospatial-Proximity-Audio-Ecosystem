@@ -53,6 +53,7 @@ export function initializeSocketManager(io) {
         }
 
         const canonicalOfficeId = String(office._id || office.code || 'hq-main');
+        const roomName = `office:${canonicalOfficeId}`;
 
         // Attach verified identity to socket session
         socket.data.userId = String(userId);
@@ -72,8 +73,6 @@ export function initializeSocketManager(io) {
         }
 
         userSocketMap.set(socket.data.userId, socket.id);
-
-        const roomName = `office:${socket.data.officeId}`;
         await socket.join(roomName);
 
         const officeWidth = office?.width || 1400;
