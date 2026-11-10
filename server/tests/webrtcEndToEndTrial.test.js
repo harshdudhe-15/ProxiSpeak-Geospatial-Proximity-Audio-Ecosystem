@@ -292,3 +292,4 @@ describe('WebRTC End-to-End Two-Browser Proximity & Signaling Verification', () 
     assert.ok(avgMs < 35, `Average negotiation cycle should be under 35ms (was ${avgMs.toFixed(2)}ms)`);
   });
 });
+
