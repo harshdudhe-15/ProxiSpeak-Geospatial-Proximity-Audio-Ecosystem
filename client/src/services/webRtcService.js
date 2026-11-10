@@ -3,7 +3,7 @@ import { spatialAudioMixer } from './spatialAudioMixer.js';
 /**
  * Connection Timeline Tracker
  * Records high-resolution monotonic timestamps (performance.now())
- * across all 16 connection and media milestones.
+ * across all connection, signaling, ICE, media, and playback milestones.
  */
 class ConnectionTimeline {
   constructor(peerId, isInitiator = false, isPrewarm = false) {
@@ -14,6 +14,22 @@ class ConnectionTimeline {
     this.reusedConnection = false;
     this.createdAt = performance.now();
     this.timestamps = {
+      // Diagnostic milestone timestamps:
+      proximityThresholdCrossed: null,
+      peerConnectionCreated: null,
+      micStreamReady: null,
+      sdpOfferCreated: null,
+      offerDelivered: null,
+      offerReceived: null,
+      answerReceived: null,
+      remoteDescriptionApplied: null,
+      firstIceCandidateGenerated: null,
+      firstRemoteIceCandidateReceived: null,
+      iceConnectionEstablished: null,
+      remoteAudioTrackReceived: null,
+      remoteAudioPlaybackStarted: null,
+
+      // Aliases for backward compatibility:
       proximityDetected: null,
       connectionRequested: null,
       requestReceived: null,
@@ -22,11 +38,9 @@ class ConnectionTimeline {
       peerCreated: null,
       offerCreated: null,
       offerSent: null,
-      offerReceived: null,
       remoteDescApplied: null,
       answerCreated: null,
       answerSent: null,
-      answerReceived: null,
       answerApplied: null,
       iceGatheringStart: null,
       iceCandidateFirst: null,
@@ -45,11 +59,79 @@ class ConnectionTimeline {
     if (this.timestamps[event] == null) {
       this.timestamps[event] = now;
     }
+
+    // Synchronize aliases
+    if (event === 'proximityThresholdCrossed' && this.timestamps.proximityDetected == null) {
+      this.timestamps.proximityDetected = now;
+    }
+    if (event === 'proximityDetected' && this.timestamps.proximityThresholdCrossed == null) {
+      this.timestamps.proximityThresholdCrossed = now;
+    }
+    if (event === 'peerConnectionCreated' && this.timestamps.peerCreated == null) {
+      this.timestamps.peerCreated = now;
+    }
+    if (event === 'peerCreated' && this.timestamps.peerConnectionCreated == null) {
+      this.timestamps.peerConnectionCreated = now;
+    }
+    if (event === 'micStreamReady' && this.timestamps.mediaAcquisitionEnd == null) {
+      this.timestamps.mediaAcquisitionEnd = now;
+    }
+    if (event === 'mediaAcquisitionEnd' && this.timestamps.micStreamReady == null) {
+      this.timestamps.micStreamReady = now;
+    }
+    if (event === 'sdpOfferCreated' && this.timestamps.offerCreated == null) {
+      this.timestamps.offerCreated = now;
+    }
+    if (event === 'offerCreated' && this.timestamps.sdpOfferCreated == null) {
+      this.timestamps.sdpOfferCreated = now;
+    }
+    if (event === 'offerDelivered' && this.timestamps.offerSent == null) {
+      this.timestamps.offerSent = now;
+    }
+    if (event === 'offerSent' && this.timestamps.offerDelivered == null) {
+      this.timestamps.offerDelivered = now;
+    }
+    if (event === 'remoteDescriptionApplied' && this.timestamps.remoteDescApplied == null) {
+      this.timestamps.remoteDescApplied = now;
+    }
+    if (event === 'remoteDescApplied' && this.timestamps.remoteDescriptionApplied == null) {
+      this.timestamps.remoteDescriptionApplied = now;
+    }
+    if (event === 'firstIceCandidateGenerated' && this.timestamps.iceCandidateFirst == null) {
+      this.timestamps.iceCandidateFirst = now;
+    }
+    if (event === 'iceCandidateFirst' && this.timestamps.firstIceCandidateGenerated == null) {
+      this.timestamps.firstIceCandidateGenerated = now;
+    }
+    if (event === 'iceConnectionEstablished' && this.timestamps.iceConnected == null) {
+      this.timestamps.iceConnected = now;
+    }
+    if (event === 'iceConnected' && this.timestamps.iceConnectionEstablished == null) {
+      this.timestamps.iceConnectionEstablished = now;
+    }
+    if (event === 'remoteAudioTrackReceived' && this.timestamps.trackArrived == null) {
+      this.timestamps.trackArrived = now;
+    }
+    if (event === 'trackArrived' && this.timestamps.remoteAudioTrackReceived == null) {
+      this.timestamps.remoteAudioTrackReceived = now;
+    }
+    if (event === 'remoteAudioPlaybackStarted') {
+      if (this.timestamps.playbackStarted == null) this.timestamps.playbackStarted = now;
+      if (this.timestamps.audioAudible == null) this.timestamps.audioAudible = now;
+    }
+    if (event === 'playbackStarted' && this.timestamps.remoteAudioPlaybackStarted == null) {
+      this.timestamps.remoteAudioPlaybackStarted = now;
+    }
+    if (event === 'audioAudible' && this.timestamps.remoteAudioPlaybackStarted == null) {
+      this.timestamps.remoteAudioPlaybackStarted = now;
+    }
   }
 
   recordCandidate(candidateType) {
-    if (this.timestamps.iceCandidateFirst == null) {
-      this.timestamps.iceCandidateFirst = performance.now();
+    const now = performance.now();
+    if (this.timestamps.firstIceCandidateGenerated == null) {
+      this.timestamps.firstIceCandidateGenerated = now;
+      this.timestamps.iceCandidateFirst = now;
     }
     const type = candidateType || 'host';
     if (this.candidateCounts[type] != null) {
@@ -61,18 +143,34 @@ class ConnectionTimeline {
 
   getSummary() {
     const t = this.timestamps;
-    const baseTime = t.proximityDetected || t.connectionRequested || this.createdAt;
+    const baseTime = t.proximityThresholdCrossed || t.proximityDetected || t.connectionRequested || this.createdAt;
 
-    const totalToPeerConnectedMs = t.peerConnected != null ? Math.round(t.peerConnected - baseTime) : null;
-    const totalToTrackArrivalMs = t.trackArrived != null ? Math.round(t.trackArrived - baseTime) : null;
-    const totalToPlaybackMs = t.playbackStarted != null ? Math.round(t.playbackStarted - baseTime) : null;
-    const totalToAudibleMs = t.audioAudible != null ? Math.round(t.audioAudible - baseTime) : null;
+    // Four core required metrics:
+    const totalConnectionEstablishmentMs = (t.remoteAudioPlaybackStarted || t.audioAudible || t.playbackStarted) != null
+      ? Math.max(0, Math.round((t.remoteAudioPlaybackStarted || t.audioAudible || t.playbackStarted) - baseTime))
+      : null;
 
-    const offerCreationMs = (t.offerCreated && (t.peerCreated || t.connectionRequested))
-      ? Math.round(t.offerCreated - (t.peerCreated || t.connectionRequested)) : null;
+    const signalingExchangeMs = (t.answerReceived && (t.offerDelivered || t.offerSent))
+      ? Math.max(0, Math.round(t.answerReceived - (t.offerDelivered || t.offerSent)))
+      : null;
 
-    const signalingRoundTripMs = (t.answerReceived && t.offerSent)
-      ? Math.round(t.answerReceived - t.offerSent) : null;
+    const iceNegotiationMs = ((t.iceConnectionEstablished || t.iceConnected) && (t.remoteDescriptionApplied || t.remoteDescApplied || t.answerApplied))
+      ? Math.max(0, Math.round((t.iceConnectionEstablished || t.iceConnected) - (t.remoteDescriptionApplied || t.remoteDescApplied || t.answerApplied)))
+      : null;
+
+    const remoteAudioPlaybackStartupMs = ((t.remoteAudioPlaybackStarted || t.playbackStarted) && (t.remoteAudioTrackReceived || t.trackArrived))
+      ? Math.max(0, Math.round((t.remoteAudioPlaybackStarted || t.playbackStarted) - (t.remoteAudioTrackReceived || t.trackArrived)))
+      : null;
+
+    const totalToPeerConnectedMs = (t.peerConnected || t.iceConnectionEstablished || t.iceConnected) != null
+      ? Math.round((t.peerConnected || t.iceConnectionEstablished || t.iceConnected) - baseTime) : null;
+    const totalToTrackArrivalMs = (t.remoteAudioTrackReceived || t.trackArrived) != null
+      ? Math.round((t.remoteAudioTrackReceived || t.trackArrived) - baseTime) : null;
+    const totalToPlaybackMs = totalConnectionEstablishmentMs;
+    const totalToAudibleMs = totalConnectionEstablishmentMs;
+
+    const offerCreationMs = ((t.sdpOfferCreated || t.offerCreated) && (t.peerConnectionCreated || t.peerCreated || t.connectionRequested))
+      ? Math.round((t.sdpOfferCreated || t.offerCreated) - (t.peerConnectionCreated || t.peerCreated || t.connectionRequested)) : null;
 
     const answerCreationMs = (t.answerCreated && t.offerReceived)
       ? Math.round(t.answerCreated - t.offerReceived) : null;
@@ -80,20 +178,14 @@ class ConnectionTimeline {
     const iceGatheringMs = (t.iceGatheringComplete && t.iceGatheringStart)
       ? Math.round(t.iceGatheringComplete - t.iceGatheringStart) : null;
 
-    const icePairingMs = (t.iceConnected && (t.answerApplied || t.remoteDescApplied))
-      ? Math.round(t.iceConnected - (t.answerApplied || t.remoteDescApplied)) : null;
-
-    const trackToPlaybackMs = (t.playbackStarted && t.trackArrived)
-      ? Math.round(t.playbackStarted - t.trackArrived) : null;
-
     // Determine largest bottleneck stage
     const stages = [
       { name: 'offer_creation', duration: offerCreationMs },
-      { name: 'signaling_roundtrip', duration: signalingRoundTripMs },
+      { name: 'signaling_roundtrip', duration: signalingExchangeMs },
       { name: 'answer_creation', duration: answerCreationMs },
       { name: 'ice_gathering', duration: iceGatheringMs },
-      { name: 'ice_pairing', duration: icePairingMs },
-      { name: 'track_to_playback', duration: trackToPlaybackMs }
+      { name: 'ice_pairing', duration: iceNegotiationMs },
+      { name: 'track_to_playback', duration: remoteAudioPlaybackStartupMs }
     ].filter(s => typeof s.duration === 'number' && s.duration > 0);
 
     stages.sort((a, b) => b.duration - a.duration);
@@ -105,16 +197,20 @@ class ConnectionTimeline {
       isInitiator: this.isInitiator,
       isPrewarm: this.isPrewarm,
       reusedConnection: this.reusedConnection,
+      totalConnectionEstablishmentMs,
+      signalingExchangeMs,
+      iceNegotiationMs,
+      remoteAudioPlaybackStartupMs,
       totalToPeerConnectedMs,
       totalToTrackArrivalMs,
       totalToPlaybackMs,
       totalToAudibleMs,
       offerCreationMs,
-      signalingRoundTripMs,
+      signalingRoundTripMs: signalingExchangeMs,
       answerCreationMs,
       iceGatheringMs,
-      icePairingMs,
-      trackToPlaybackMs,
+      icePairingMs: iceNegotiationMs,
+      trackToPlaybackMs: remoteAudioPlaybackStartupMs,
       largestDelayStage,
       candidateCounts: { ...this.candidateCounts },
       errorsCount: this.errors.length,
@@ -136,8 +232,6 @@ export class WebRtcService {
     this.localStream = null;
     this.iceServers = [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' }
     ];
 
@@ -531,6 +625,12 @@ export class WebRtcService {
         // End of candidates
         timeline.record('iceGatheringComplete');
         this.logDiagnostic(peerId, 'ice_gathering_complete');
+        if (activeSocket) {
+          activeSocket.emit('rtc:ice-candidate', {
+            targetPeerId: peerId,
+            candidate: null
+          });
+        }
       }
     };
 
@@ -555,6 +655,7 @@ export class WebRtcService {
 
     // Remote audio track received
     pc.ontrack = (event) => {
+      timeline.record('remoteAudioTrackReceived');
       timeline.record('trackArrived');
       this.setPeerMilestone(peerId, 'track-received');
 
@@ -569,8 +670,30 @@ export class WebRtcService {
       if (event.track && event.track.addEventListener) {
         event.track.addEventListener('unmute', () => {
           this.logDiagnostic(peerId, 'track_unmuted_rtp_flowing');
+          timeline.record('remoteAudioPlaybackStarted');
+          timeline.record('audioAudible');
+          timeline.record('playbackStarted');
+          if (this.getConnectionState(peerId) === 'connected') {
+            this.setPeerMilestone(peerId, 'audio-audible');
+          }
           spatialAudioMixer.resumeAllAudio();
+          this.notifyStateChange();
         });
+
+        event.track.addEventListener('mute', () => {
+          this.logDiagnostic(peerId, 'track_muted_rtp_paused');
+          this.notifyStateChange();
+        });
+      }
+
+      // If track is already unmuted when ontrack fired
+      if (event.track && event.track.muted === false) {
+        timeline.record('remoteAudioPlaybackStarted');
+        timeline.record('audioAudible');
+        timeline.record('playbackStarted');
+        if (this.getConnectionState(peerId) === 'connected') {
+          this.setPeerMilestone(peerId, 'audio-audible');
+        }
       }
 
       const stream = (event.streams && event.streams[0]) ||
@@ -584,6 +707,7 @@ export class WebRtcService {
       const iceState = pc.iceConnectionState;
       this.logDiagnostic(peerId, 'ice_state_change', { iceState });
       if (iceState === 'connected' || iceState === 'completed') {
+        timeline.record('iceConnectionEstablished');
         timeline.record('iceConnected');
       }
     };
@@ -598,7 +722,17 @@ export class WebRtcService {
         this.clearWatchdog(peerId);
         timeline.record('peerConnected');
         this.setLifecycleState(peerId, 'connected');
-        this.setPeerMilestone(peerId, 'peer-connected');
+
+        // Check if track is already received & unmuted
+        const receivers = pc.getReceivers ? pc.getReceivers() : [];
+        const audioReceiver = receivers.find(r => r.track && r.track.kind === 'audio');
+        if (audioReceiver?.track && !audioReceiver.track.muted) {
+          this.setPeerMilestone(peerId, 'audio-audible');
+          timeline.record('remoteAudioPlaybackStarted');
+          timeline.record('audioAudible');
+        } else {
+          this.setPeerMilestone(peerId, 'peer-connected');
+        }
         this.notifyStateChange();
       } else if (state === 'failed') {
         this.clearWatchdog(peerId);
@@ -687,6 +821,7 @@ export class WebRtcService {
 
       const activeSocket = socket || this.peerSockets.get(peerId);
       if (activeSocket) {
+        timeline.record('offerDelivered');
         timeline.record('offerSent');
         activeSocket.emit('rtc:offer', {
           targetPeerId: peerId,
@@ -745,6 +880,7 @@ export class WebRtcService {
       }
 
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      timeline.record('remoteDescriptionApplied');
       timeline.record('remoteDescApplied');
       await this.flushIceQueue(senderPeerId, pc);
 
@@ -792,6 +928,8 @@ export class WebRtcService {
       }
 
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      timeline.record('remoteDescriptionApplied');
+      timeline.record('remoteDescApplied');
       timeline.record('answerApplied');
       await this.flushIceQueue(senderPeerId, pc);
       this.logDiagnostic(senderPeerId, 'answer_applied_stable', { state: pc.signalingState });
@@ -806,7 +944,12 @@ export class WebRtcService {
    * Handles incoming ICE candidate with safe queuing if remote description is not ready yet.
    */
   async handleIceCandidate(senderPeerId, candidate) {
-    if (!candidate) return;
+    if (candidate === undefined) return;
+
+    const timeline = this.timelines.get(senderPeerId);
+    if (timeline && timeline.timestamps.firstRemoteIceCandidateReceived == null) {
+      timeline.record('firstRemoteIceCandidateReceived');
+    }
 
     try {
       const pc = this.peers.get(senderPeerId);
@@ -820,33 +963,49 @@ export class WebRtcService {
 
       if (pc.signalingState === 'closed') return;
 
-      if (candidate.candidate) {
-        const iceCandidate = typeof RTCIceCandidate !== 'undefined' ? new RTCIceCandidate(candidate) : candidate;
-        await pc.addIceCandidate(iceCandidate);
+      if (!candidate || candidate.candidate === null || candidate.candidate === '') {
+        // End-of-candidates notification
+        try {
+          await pc.addIceCandidate(null);
+        } catch {
+          // ignore if browser throws on null
+        }
+        return;
       }
+
+      const iceCandidate = typeof RTCIceCandidate !== 'undefined'
+        ? (candidate instanceof RTCIceCandidate ? candidate : new RTCIceCandidate(candidate))
+        : candidate;
+      await pc.addIceCandidate(iceCandidate);
     } catch (err) {
       console.warn(`[WebRTC] Error adding ICE candidate from ${senderPeerId}:`, err.message);
     }
   }
 
   /**
-   * Flushes queued ICE candidates after remote description is established.
+   * Flushes queued ICE candidates concurrently after remote description is established.
    */
   async flushIceQueue(peerId, pc) {
     const queue = this.iceQueues.get(peerId);
     if (!queue || !queue.length) return;
 
     const candidates = queue.splice(0, queue.length);
-    for (const candidate of candidates) {
+    await Promise.all(candidates.map(async (candidate) => {
       try {
-        if (candidate && candidate.candidate && pc.signalingState !== 'closed') {
-          const iceCandidate = typeof RTCIceCandidate !== 'undefined' ? new RTCIceCandidate(candidate) : candidate;
+        if (!candidate || candidate.candidate === null || candidate.candidate === '') {
+          try { await pc.addIceCandidate(null); } catch {}
+          return;
+        }
+        if (pc.signalingState !== 'closed') {
+          const iceCandidate = typeof RTCIceCandidate !== 'undefined'
+            ? (candidate instanceof RTCIceCandidate ? candidate : new RTCIceCandidate(candidate))
+            : candidate;
           await pc.addIceCandidate(iceCandidate);
         }
       } catch (err) {
         console.warn(`[WebRTC] Error flushing candidate for ${peerId}:`, err.message);
       }
-    }
+    }));
   }
 
   /**
@@ -862,9 +1021,12 @@ export class WebRtcService {
     timeline.reusedConnection = true;
     timeline.record('peerConnected');
     timeline.record('trackArrived');
+    timeline.record('remoteAudioTrackReceived');
+    timeline.record('remoteAudioPlaybackStarted');
+    timeline.record('audioAudible');
 
     this.setLifecycleState(peerId, 'connected');
-    this.setPeerMilestone(peerId, 'peer-connected');
+    this.setPeerMilestone(peerId, 'audio-audible');
     spatialAudioMixer.setPeerProximityMute(peerId, false);
 
     this.logDiagnostic(peerId, 'dormant_peer_reactivated_reused');
@@ -873,6 +1035,7 @@ export class WebRtcService {
 
   /**
    * Handles proximity:entered by waking dormant peers or initiating negotiation.
+   * Both offer-initiator and responder immediately prepare their peer connection.
    */
   handleProximityEntered(peerId, shouldInitiateOffer, socket) {
     if (!peerId) return;
@@ -882,16 +1045,135 @@ export class WebRtcService {
       this.dormantTimers.delete(peerId);
     }
 
+    const timeline = this.getOrCreateTimeline(peerId, shouldInitiateOffer);
+    timeline.record('proximityThresholdCrossed');
+    timeline.record('proximityDetected');
+
     const currentLifecycle = this.getLifecycleState(peerId);
     if (currentLifecycle === 'dormant') {
       this.reactivateDormantPeer(peerId);
-    } else {
-      spatialAudioMixer.setPeerProximityMute(peerId, false);
+      return;
     }
+
+    spatialAudioMixer.setPeerProximityMute(peerId, false);
+
+    // Prepare RTCPeerConnection immediately on BOTH initiator and responder
+    this.getOrCreatePeer(peerId, socket);
+    this.setLifecycleState(peerId, 'connecting');
 
     if (shouldInitiateOffer) {
       this.initiateOffer(peerId, socket);
     }
+  }
+
+  /**
+   * Comprehensive connection state machine providing accurate status across:
+   * 1. IDLE – No proximity audio connection is required.
+   * 2. CONNECTING – Connection negotiation is in progress.
+   * 3. CONNECTED – WebRTC peer connection and ICE connectivity are established.
+   * 4. LIVE – Remote audio track is available, attached and actually playable.
+   * 5. RECONNECTING – An established connection has temporarily failed and recovery is in progress.
+   * 6. FAILED – Connection could not be established.
+   */
+  getDetailedPeerState(peerId) {
+    if (!peerId) {
+      return { state: 'IDLE', label: 'Idle', isLive: false };
+    }
+
+    const pc = this.peers.get(peerId);
+    const connState = this.connectionStates.get(peerId) || 'new';
+    const iceState = pc?.iceConnectionState || 'new';
+    const lifecycle = this.getLifecycleState(peerId);
+    const restartCount = this.restartAttempts.get(peerId) || 0;
+
+    // 1. FAILED:
+    if (connState === 'failed' || iceState === 'failed' || lifecycle === 'failed') {
+      return {
+        state: 'FAILED',
+        label: 'Connection Failed',
+        isLive: false,
+        details: { connState, iceState, lifecycle }
+      };
+    }
+
+    // 2. RECONNECTING:
+    if (
+      lifecycle === 'reconnecting' ||
+      restartCount > 0 ||
+      ((connState === 'disconnected' || iceState === 'disconnected') && pc?.signalingState !== 'closed')
+    ) {
+      return {
+        state: 'RECONNECTING',
+        label: 'Reconnecting...',
+        isLive: false,
+        details: { connState, iceState, restartCount }
+      };
+    }
+
+    // Check transport-level connection
+    const isTransportConnected = (connState === 'connected') && (iceState === 'connected' || iceState === 'completed');
+
+    // 3. LIVE:
+    // Requires verified transport connection AND verified active audio stream
+    const isAudible = spatialAudioMixer.isPeerAudible(peerId);
+    const receivers = pc?.getReceivers ? pc.getReceivers() : [];
+    const audioReceiver = receivers.find(r => r.track && r.track.kind === 'audio');
+    const remoteTrack = audioReceiver?.track;
+    const isTrackStreaming = remoteTrack && remoteTrack.readyState === 'live' && !remoteTrack.muted;
+
+    if (isTransportConnected && (isAudible || isTrackStreaming)) {
+      return {
+        state: 'LIVE',
+        label: 'Audio Live',
+        isLive: true,
+        details: { connState, iceState, isAudible, isTrackStreaming }
+      };
+    }
+
+    // 4. CONNECTED:
+    // WebRTC peer connection and ICE connectivity are established, awaiting audio unmute/render
+    if (isTransportConnected) {
+      return {
+        state: 'CONNECTED',
+        label: 'Connected',
+        isLive: false,
+        details: { connState, iceState }
+      };
+    }
+
+    // 5. CONNECTING:
+    if (
+      lifecycle === 'connecting' ||
+      lifecycle === 'preparing' ||
+      connState === 'connecting' ||
+      iceState === 'checking' ||
+      pc?.signalingState === 'have-local-offer' ||
+      pc?.signalingState === 'have-remote-offer'
+    ) {
+      return {
+        state: 'CONNECTING',
+        label: 'Connecting...',
+        isLive: false,
+        details: { connState, iceState, signalingState: pc?.signalingState }
+      };
+    }
+
+    // 6. IDLE:
+    if (lifecycle === 'dormant') {
+      return {
+        state: 'IDLE',
+        label: 'Dormant (Cached)',
+        isLive: false,
+        details: { lifecycle }
+      };
+    }
+
+    return {
+      state: 'IDLE',
+      label: 'Out of range',
+      isLive: false,
+      details: { lifecycle }
+    };
   }
 
   /**
@@ -1019,3 +1301,9 @@ export class WebRtcService {
 }
 
 export const webRtcService = new WebRtcService();
+
+// Expose safe diagnostic helpers on window for runtime connection inspection
+if (typeof window !== 'undefined') {
+  window.proxispeakDiagnostics = () => webRtcService.getDiagnostics();
+  window.proxispeakTimelines = () => webRtcService.getAllTimelineSummaries();
+}

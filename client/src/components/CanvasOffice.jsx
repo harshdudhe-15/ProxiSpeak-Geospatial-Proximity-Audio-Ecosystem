@@ -406,8 +406,13 @@ export function CanvasOffice({
         );
         remote.isObstructed = isObstructed;
 
-        const audioLevel = spatialAudioMixer.getPeerAudioLevel(peerId);
-        remote.isSpeaking = audioLevel > 8 && !remote.micMuted;
+        const peerStatus = webRtcService.getDetailedPeerState
+          ? webRtcService.getDetailedPeerState(peerId)
+          : { state: 'IDLE', label: 'Idle', isLive: false };
+        remote.connectionStatus = peerStatus;
+
+        const audioLevel = peerStatus.isLive ? spatialAudioMixer.getPeerAudioLevel(peerId) : 0;
+        remote.isSpeaking = peerStatus.isLive && audioLevel > 8 && !remote.micMuted;
 
         spatialAudioMixer.updatePeerSpatial(peerId, localPos, remotePos, isObstructed);
       }

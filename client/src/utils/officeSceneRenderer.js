@@ -79,7 +79,7 @@ export function drawScene(
   for (const [peerId, remote] of remoteMap.entries()) {
     const dist = calculateDistance(localPos, { x: remote.currentX, y: remote.currentY });
     if (dist <= hearingRadius) {
-      drawProximityRay(ctx, localPos, { x: remote.currentX, y: remote.currentY }, dist, hearingRadius, remote.isObstructed);
+      drawProximityRay(ctx, localPos, { x: remote.currentX, y: remote.currentY }, dist, hearingRadius, remote.isObstructed, remote.connectionStatus);
     }
   }
 
@@ -949,10 +949,12 @@ function drawBookshelf(ctx, item) {
 }
 
 /**
- * Draws the proximity ray between two users in earshot
+ * Draws the proximity ray between two users in earshot reflecting real connection status
  */
-function drawProximityRay(ctx, localPos, remotePos, dist, hearingRadius, isObstructed) {
+function drawProximityRay(ctx, localPos, remotePos, dist, hearingRadius, isObstructed, connectionStatus) {
   const alpha = Math.max(0.25, 1 - dist / hearingRadius);
+  const isLive = connectionStatus ? connectionStatus.state === 'LIVE' : false;
+  const isConnecting = connectionStatus ? (connectionStatus.state === 'CONNECTING' || connectionStatus.state === 'RECONNECTING') : false;
 
   ctx.save();
   if (isObstructed) {
@@ -960,11 +962,21 @@ function drawProximityRay(ctx, localPos, remotePos, dist, hearingRadius, isObstr
     ctx.strokeStyle = `rgba(217, 119, 6, ${alpha.toFixed(2)})`;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 6]);
-  } else {
-    // Clear audio connection: sky/cyan pulse line
+  } else if (isLive) {
+    // Verified live audio connection: sky/cyan pulse line
     ctx.strokeStyle = `rgba(2, 132, 199, ${alpha.toFixed(2)})`;
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
+  } else if (isConnecting) {
+    // Negotiation in progress: amber dashed line
+    ctx.strokeStyle = `rgba(245, 158, 11, ${(alpha * 0.75).toFixed(2)})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 5]);
+  } else {
+    // Connected or preparing: soft indigo line
+    ctx.strokeStyle = `rgba(99, 102, 241, ${(alpha * 0.6).toFixed(2)})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
   }
 
   ctx.beginPath();
@@ -975,7 +987,7 @@ function drawProximityRay(ctx, localPos, remotePos, dist, hearingRadius, isObstr
   // Midpoint audio connection icon / blip
   const midX = (localPos.x + remotePos.x) / 2;
   const midY = (localPos.y + remotePos.y) / 2;
-  ctx.fillStyle = isObstructed ? 'rgba(217, 119, 6, 0.85)' : 'rgba(2, 132, 199, 0.85)';
+  ctx.fillStyle = isObstructed ? 'rgba(217, 119, 6, 0.85)' : isLive ? 'rgba(2, 132, 199, 0.85)' : 'rgba(245, 158, 11, 0.7)';
   ctx.beginPath();
   ctx.arc(midX, midY, 3, 0, Math.PI * 2);
   ctx.fill();

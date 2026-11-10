@@ -96,30 +96,16 @@ export function ParticipantRoster({
             const inRange = distance <= hearingRadius;
             const level = audioLevels[user.userId] || 0;
 
-            let proximityLabel;
-            const connState = webRtcService.getConnectionState(user.userId);
-            const milestone = webRtcService.getPeerMilestone ? webRtcService.getPeerMilestone(user.userId) : 'idle';
-            const lifecycle = webRtcService.getLifecycleState ? webRtcService.getLifecycleState(user.userId) : 'idle';
-            const isAudible = spatialAudioMixer.isPeerAudible(user.userId);
+            const peerStatus = webRtcService.getDetailedPeerState
+              ? webRtcService.getDetailedPeerState(user.userId)
+              : { state: 'IDLE', label: 'Idle', isLive: false };
+            const isLive = inRange && peerStatus.state === 'LIVE';
 
+            let proximityLabel;
             if (inRange) {
-              if (isAudible || milestone === 'audio-audible') {
-                proximityLabel = `${distance}px • Audio Live`;
-              } else if (milestone === 'playback-ready') {
-                proximityLabel = `${distance}px • Playback Enabled`;
-              } else if (milestone === 'track-received') {
-                proximityLabel = `${distance}px • Track Received`;
-              } else if (connState === 'connected' || milestone === 'peer-connected') {
-                proximityLabel = `${distance}px • Peer Connected`;
-              } else if (connState === 'connecting' || lifecycle === 'connecting') {
-                proximityLabel = `${distance}px • Connecting...`;
-              } else if (connState === 'failed' || connState === 'disconnected') {
-                proximityLabel = `${distance}px • Reconnecting...`;
-              } else {
-                proximityLabel = `${distance}px • In Earshot`;
-              }
+              proximityLabel = `${distance}px • ${peerStatus.label}`;
             } else {
-              if (lifecycle === 'dormant') {
+              if (peerStatus.label === 'Dormant (Cached)') {
                 proximityLabel = `${distance}px • Dormant (Cached)`;
               } else {
                 proximityLabel = `${distance}px • Out of range`;
@@ -140,7 +126,7 @@ export function ParticipantRoster({
                   </div>
                   <div className="roster-name-group">
                     <span className="roster-user-name">{user.displayName}</span>
-                    <span className={`roster-proximity-tag ${inRange ? 'active' : ''}`}>
+                    <span className={`roster-proximity-tag ${isLive ? 'active' : ''}`}>
                       <Signal size={10} />
                       {proximityLabel}
                     </span>
@@ -150,12 +136,32 @@ export function ParticipantRoster({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {user.micMuted ? (
                     <MicOff size={16} color="#f43f5e" title="User is muted" />
-                  ) : inRange ? (
+                  ) : isLive ? (
                     <div className="audio-level-bars" title={`Voice amplitude: ${level}%`}>
                       <div className="audio-bar" style={{ height: `${Math.max(4, level * 0.16)}px` }} />
                       <div className="audio-bar" style={{ height: `${Math.max(6, level * 0.22)}px` }} />
                       <div className="audio-bar" style={{ height: `${Math.max(4, level * 0.14)}px` }} />
                     </div>
+                  ) : inRange ? (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 500,
+                        color: peerStatus.state === 'CONNECTING' || peerStatus.state === 'RECONNECTING'
+                          ? '#d97706'
+                          : peerStatus.state === 'FAILED'
+                          ? '#dc2626'
+                          : '#0284c7'
+                      }}
+                    >
+                      {peerStatus.state === 'CONNECTING'
+                        ? 'Connecting...'
+                        : peerStatus.state === 'CONNECTED'
+                        ? 'Connected'
+                        : peerStatus.state === 'FAILED'
+                        ? 'Failed'
+                        : 'In Earshot'}
+                    </span>
                   ) : (
                     <Volume2 size={16} color="#64748b" title="Out of hearing range" />
                   )}

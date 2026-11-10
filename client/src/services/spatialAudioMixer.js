@@ -287,7 +287,7 @@ export class SpatialAudioMixer {
       }
     }
 
-    if (targetGain > 0 && this.audioCtx && this.audioCtx.state === 'running') {
+    if (this.isPeerAudible(peerId)) {
       for (const cb of this.audibleListeners) {
         cb(peerId, targetGain);
       }
@@ -331,8 +331,19 @@ export class SpatialAudioMixer {
     const nodeGroup = this.peerNodes.get(peerId);
     if (!nodeGroup || !this.audioCtx) return false;
     if (this.audioCtx.state !== 'running') return false;
+    if (this.isAutoplayBlocked) return false;
     if (this.masterMuted || nodeGroup.micMuted || nodeGroup.proximityMuted) return false;
-    return (nodeGroup.lastComputedGain || 0) > 0;
+    if ((nodeGroup.lastComputedGain || 0) <= 0) return false;
+
+    // Check that at least one audio track in the stream is live and not muted (RTP actively flowing)
+    if (nodeGroup.stream && nodeGroup.stream.getAudioTracks) {
+      const tracks = nodeGroup.stream.getAudioTracks();
+      if (!tracks.length) return false;
+      const hasLiveUnmutedTrack = tracks.some(t => t.readyState === 'live' && !t.muted);
+      if (!hasLiveUnmutedTrack) return false;
+    }
+
+    return true;
   }
 
   hasPeerStream(peerId) {

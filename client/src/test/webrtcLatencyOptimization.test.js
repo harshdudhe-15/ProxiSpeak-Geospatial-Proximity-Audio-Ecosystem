@@ -263,4 +263,80 @@ describe('WebRTC Connection Latency, Timeline & Optimization Tests', () => {
 
     vi.useRealTimers();
   });
+
+  it('ACCURATE UI STATES: never displays LIVE prematurely and verifies all 6 connection states', async () => {
+    const peerId = 'user_charlie';
+
+    // 1. Initial State: IDLE
+    const initialStatus = aliceWebRtc.getDetailedPeerState(peerId);
+    expect(initialStatus.state).toBe('IDLE');
+    expect(initialStatus.isLive).toBe(false);
+
+    // 2. Proximity Entered / Negotiation in progress: CONNECTING (never LIVE!)
+    aliceWebRtc.handleProximityEntered(peerId, false, mockSocketAlice);
+    const connectingStatus = aliceWebRtc.getDetailedPeerState(peerId);
+    expect(connectingStatus.state).toBe('CONNECTING');
+    expect(connectingStatus.label).toBe('Connecting...');
+    expect(connectingStatus.isLive).toBe(false); // MUST NOT BE LIVE!
+
+    // 3. Transport Connected: CONNECTED (still NOT LIVE if track is muted or not yet streaming)
+    const pc = aliceWebRtc.peers.get(peerId);
+    expect(pc).toBeDefined();
+    aliceWebRtc.connectionStates.set(peerId, 'connected');
+    pc.iceConnectionState = 'connected';
+    pc.connectionState = 'connected';
+
+    const connectedStatus = aliceWebRtc.getDetailedPeerState(peerId);
+    expect(connectedStatus.state).toBe('CONNECTED');
+    expect(connectedStatus.label).toBe('Connected');
+    expect(connectedStatus.isLive).toBe(false); // MUST NOT BE LIVE YET!
+
+    // 4. Remote track received, unmuted (RTP flowing) and playable: LIVE
+    const fakeLiveTrack = { id: 'track_live', kind: 'audio', readyState: 'live', muted: false, enabled: true };
+    pc.getReceivers = () => [{ track: fakeLiveTrack }];
+
+    const liveStatus = aliceWebRtc.getDetailedPeerState(peerId);
+    expect(liveStatus.state).toBe('LIVE');
+    expect(liveStatus.label).toBe('Audio Live');
+    expect(liveStatus.isLive).toBe(true); // VERIFIED LIVE!
+
+    // 5. Temporary disconnection: RECONNECTING
+    aliceWebRtc.connectionStates.set(peerId, 'disconnected');
+    const reconnectingStatus = aliceWebRtc.getDetailedPeerState(peerId);
+    expect(reconnectingStatus.state).toBe('RECONNECTING');
+    expect(reconnectingStatus.isLive).toBe(false);
+
+    // 6. Hard failure: FAILED
+    aliceWebRtc.connectionStates.set(peerId, 'failed');
+    const failedStatus = aliceWebRtc.getDetailedPeerState(peerId);
+    expect(failedStatus.state).toBe('FAILED');
+    expect(failedStatus.isLive).toBe(false);
+  });
+
+  it('TIMING DIAGNOSTICS: accurately computes total establishment, signaling exchange, ICE negotiation, and playback startup metrics', () => {
+    const peerId = 'user_metrics';
+    const tl = aliceWebRtc.getOrCreateTimeline(peerId, true);
+
+    const t0 = 1000;
+    tl.record('proximityThresholdCrossed', t0);
+    tl.record('peerConnectionCreated', t0 + 2);
+    tl.record('micStreamReady', t0 + 5);
+    tl.record('sdpOfferCreated', t0 + 12);
+    tl.record('offerDelivered', t0 + 15);
+    tl.record('offerReceived', t0 + 25);
+    tl.record('answerReceived', t0 + 45); // Signaling exchange: 45 - 15 = 30ms
+    tl.record('remoteDescriptionApplied', t0 + 50);
+    tl.record('firstIceCandidateGenerated', t0 + 18);
+    tl.record('firstRemoteIceCandidateReceived', t0 + 35);
+    tl.record('iceConnectionEstablished', t0 + 95); // ICE negotiation: 95 - 50 = 45ms
+    tl.record('remoteAudioTrackReceived', t0 + 98);
+    tl.record('remoteAudioPlaybackStarted', t0 + 110); // Playback startup: 110 - 98 = 12ms; Total: 110ms
+
+    const summary = tl.getSummary();
+    expect(summary.totalConnectionEstablishmentMs).toBe(110);
+    expect(summary.signalingExchangeMs).toBe(30);
+    expect(summary.iceNegotiationMs).toBe(45);
+    expect(summary.remoteAudioPlaybackStartupMs).toBe(12);
+    expect(summary.callId).toContain(peerId);
+  });
 });
